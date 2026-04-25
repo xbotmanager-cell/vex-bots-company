@@ -31,7 +31,7 @@ module.exports = {
         try {
             // Replace "YOUR_GEMINI_API_KEY" with your actual key from Google AI Studio
             const API_KEY = "AIzaSyCYZ9Or3uaaULQx9CFCnOrEAC_oEqSDVfw";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${API_KEY}`;
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
             const response = await axios.post(apiUrl, {
                 contents: [{ parts: [{ text: systemPrompt + query }] }]
