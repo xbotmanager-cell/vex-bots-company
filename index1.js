@@ -90,7 +90,7 @@ async function startVex() {
 
     sock.ev.on('messages.upsert', async (chatUpdate) => {
         const m = chatUpdate.messages[0];
-        if (!m.message || m.key.fromMe) return;
+        if (!m.message) return;
 
         const type = getContentType(m.message);
         const body = (type === 'conversation') ? m.message.conversation : 
