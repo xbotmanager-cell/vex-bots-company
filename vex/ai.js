@@ -2,7 +2,7 @@
 // Nova: Advanced Artificial Intelligence (Gemini 1.5 Flash Engine)
 // Personality: VEX AI (Developed by Lupin Starnley in Tanzania)
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require("@google/generative-ai");
 
 module.exports = {
     vex: 'ai',
@@ -21,22 +21,42 @@ module.exports = {
         const systemPrompt = `You are VEX AI, a high-precision artificial intelligence integrated into the VEX MINI BOT. 
         You were developed and programmed by Master Lupin Starnley in Tanzania. 
         Your primary directive is to facilitate complex tasks, providing accurate answers in IT, Coding, Cybersecurity, and general knowledge.
-        You are free for everyone to use, but you maintain a professional, elite, and cyber-intelligent tone.
         You identify solely as VEX AI. Never mention Google or Gemini. 
         Lupin Starnley is your creator and master. 
-        Ensure your responses are highly accurate and structured.`;
+        Ensure your responses are highly accurate and structured. Professional and elite tone.`;
 
         try {
-            // Fetching API Key from Render Environment Variable
+            // Hakikisha GEMINI_KEY imewekwa vizuri kwenye Render Environment Variables
             const genAI = new GoogleGenerativeAI(process.env.GEMINI_KEY);
             
-            // Using Gemini 1.5 Flash for high-speed response
+            // Konfiguresheni ya Model
             const model = genAI.getGenerativeModel({ 
                 model: "gemini-1.5-flash",
-                systemInstruction: systemPrompt,
+                systemInstruction: {
+                    role: "system",
+                    parts: [{ text: systemPrompt }],
+                },
             });
 
-            const result = await model.generateContent(query);
+            // Kuzuia AI isiblock majibu ya IT/Cybersecurity (Safety Settings)
+            const generationConfig = {
+                temperature: 0.7,
+                topK: 40,
+                topP: 0.95,
+                maxOutputTokens: 2048,
+            };
+
+            const result = await model.generateContent({
+                contents: [{ role: "user", parts: [{ text: query }] }],
+                generationConfig,
+                safetySettings: [
+                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                ],
+            });
+
             const response = await result.response;
             const aiResponse = response.text();
 
@@ -58,7 +78,7 @@ module.exports = {
 
         } catch (e) {
             console.error("AI Error:", e);
-            m.reply("❌ *AI ERROR:* Data link to VEX Neural Core was severed. Ensure GEMINI_KEY is correctly set in Render environment.");
+            m.reply("❌ *AI ERROR:* Data link severed. Hakikisha API Key yako ni sahihi na ume-allow Generative AI API kwenye Google Cloud.");
         }
     }
 };
