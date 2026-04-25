@@ -19,7 +19,7 @@ module.exports = {
 
         try {
             // Unatakiwa upate API KEY ya bure kutoka openweathermap.org
-            const API_KEY = "YOUR_OPENWEATHER_API_KEY";
+            const API_KEY = "b31ac1272734c4fd6c1c61ea1a99ba50";
             const apiUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${API_KEY}`;
 
             const res = await axios.get(apiUrl);
