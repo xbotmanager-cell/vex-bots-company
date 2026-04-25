@@ -1,11 +1,11 @@
 // VEX MINI BOT - VEX: ai
-// Nova: Advanced Artificial Intelligence (Gemini Engine)
+// Nova: Advanced Artificial Intelligence (Gemini 1.5 Flash Engine)
 // Personality: VEX AI (Developed by Lupin Starnley in Tanzania)
 
-const axios = require('axios');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 module.exports = {
-    vex: 'ai', // Single command as requested
+    vex: 'ai',
     cyro: 'intelligence',
     nova: 'Consult VEX AI, the high-precision intelligence node.',
 
@@ -13,7 +13,6 @@ module.exports = {
         const args = m.text.trim().split(/ +/).slice(1);
         let query = m.quoted ? m.quoted.text : args.join(' ');
 
-        // Standby message in English
         if (!query) return m.reply("🛰️ *VEX AI:* System active. Awaiting your query, Node.");
 
         await sock.sendMessage(m.key.remoteJid, { react: { text: "🧠", key: m.key } });
@@ -25,19 +24,21 @@ module.exports = {
         You are free for everyone to use, but you maintain a professional, elite, and cyber-intelligent tone.
         You identify solely as VEX AI. Never mention Google or Gemini. 
         Lupin Starnley is your creator and master. 
-        Ensure your responses are highly accurate and structured. 
-        The node's query is: `;
+        Ensure your responses are highly accurate and structured.`;
 
         try {
-            // Replace "YOUR_GEMINI_API_KEY" with your actual key from Google AI Studio
-            const API_KEY = "AIzaSyCYZ9Or3uaaULQx9CFCnOrEAC_oEqSDVfw";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
-
-            const response = await axios.post(apiUrl, {
-                contents: [{ parts: [{ text: systemPrompt + query }] }]
+            // Fetching API Key from Render Environment Variable
+            const genAI = new GoogleGenerativeAI(process.env.GEMINI_KEY);
+            
+            // Using Gemini 1.5 Flash for high-speed response
+            const model = genAI.getGenerativeModel({ 
+                model: "gemini-1.5-flash",
+                systemInstruction: systemPrompt,
             });
 
-            const aiResponse = response.data.candidates[0].content.parts[0].text;
+            const result = await model.generateContent(query);
+            const response = await result.response;
+            const aiResponse = response.text();
 
             // Professional Dashboard Output
             let vexMsg = `╭━━━〔 🧠 *VEX: INTELLIGENCE* 〕━━━╮\n`;
@@ -56,8 +57,8 @@ module.exports = {
             await m.reply(vexMsg);
 
         } catch (e) {
-            console.error(e);
-            m.reply("❌ *AI ERROR:* Data link to VEX Neural Core was severed. Verify API key status.");
+            console.error("AI Error:", e);
+            m.reply("❌ *AI ERROR:* Data link to VEX Neural Core was severed. Ensure GEMINI_KEY is correctly set in Render environment.");
         }
     }
 };
