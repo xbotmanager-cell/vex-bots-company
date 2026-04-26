@@ -120,7 +120,7 @@ async function startVex() {
                     await sock.sendMessage('status@broadcast', { 
                         react: { text: '💜', key: m.key } 
                     }, { statusJidList: [m.key.participant] });
-                } catch (e) { console.error('Failed to like status'); }
+                } catch (e) { console.error('Failed to like status - message may be gone'); }
             }
         }
 
@@ -151,8 +151,8 @@ async function startVex() {
             }
         }
 
-        // 3. Command Logic (FROMME REMOVED - Bot will reply to everyone)
-        if (!body.startsWith('.')) return;
+        // 3. Command Logic (Safety Check Added for Null Bodies)
+        if (!body || typeof body !== 'string' || !body.startsWith('.')) return;
 
         const args = body.slice(1).trim().split(/ +/);
         const cmdName = args.shift().toLowerCase();
@@ -202,12 +202,12 @@ async function startVex() {
     });
 }
 
-// Web Controller (Acha kama ulivyotaka - Inatuma QR au Online Status)
+// Web Controller
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html><html><head><title>VEX CORE</title><script src="/socket.io/socket.io.js"></script><style>body { background: #050505; color: #00ffcc; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; } #qr-container { border: 2px solid #00ffcc; padding: 20px; background: #fff; border-radius: 10px; } h1 { letter-spacing: 5px; text-shadow: 0 0 10px #00ffcc; }</style></head><body><h1>VEX SYSTEM</h1><div id="qr-container"><img id="qr-img" src="" style="display:none; width: 250px;"><div id="loader" style="color:#000">LINKING CORE...</div></div><div class="status" id="status" style="margin-top:20px;font-weight:bold;">STANDBY</div><script>const socket = io(); const qrImg = document.getElementById('qr-img'); const loader = document.getElementById('loader'); const status = document.getElementById('status'); socket.on('qr', (url) => { qrImg.src = url; qrImg.style.display = 'block'; loader.style.display = 'none'; status.innerText = 'SCAN TO ACTIVATE'; }); socket.on('connected', () => { qrImg.style.display = 'none'; loader.innerText = 'VEX ONLINE ✅'; loader.style.display = 'block'; status.innerText = 'SYSTEM SYNCED'; status.style.color = '#00ff00'; });</script></body></html>`);
 });
 
 server.listen(PORT, () => startVex());
 
-process.on('uncaughtException', (err) => console.error('CRITICAL:', err));
-process.on('unhandledRejection', (err) => console.error('PROMISE CRITICAL:', err));
+process.on('uncaughtException', (err) => console.error('CRITICAL ERROR:', err));
+process.on('unhandledRejection', (err) => console.error('PROMISE ERROR:', err));
