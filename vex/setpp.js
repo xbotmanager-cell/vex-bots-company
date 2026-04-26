@@ -8,32 +8,35 @@ module.exports = {
     nova: 'Updates the bot’s profile picture for the bot owner only.',
 
     async execute(m, sock) {
-        // 1. SECURITY CHECK: Je, aliyetuma amri ni mmiliki wa Bot?
-        // (m.fromMe inamaanisha ujumbe umetoka kwa namba iliyounganishwa na bot)
+        // 1. OWNER SECURITY CHECK
+        // Tunakagua kama ni namba ya mmiliki (Owner) ndio imetuma amri
         if (!m.fromMe) {
             let redirectMsg = `⚠️ *ACCESS DENIED*\n\n`;
             redirectMsg += `You are not the owner of this VEX instance. You cannot change my identity.\n\n`;
-            redirectMsg += `🚀 *Want your own bot?* Create it here:\n`;
-            redirectMsg += `👉 https://lupper-md-k0ij.onrender.com\n\n`; // Weka link yako ya Github hapa
+            redirectMsg += `🚀 *Want your own bot?* Deploy it here:\n`;
+            redirectMsg += `👉 https://vex-mini-bot-epxc.onrender.com\n\n`; 
             redirectMsg += `_VEX MINI BOT: Vision Beyond Limits_`;
             
             return m.reply(redirectMsg);
         }
 
-        // 2. CHECK FOR IMAGE
+        // 2. IMAGE DETECTION
         const quoted = m.quoted ? m.quoted : m;
         const mime = (quoted.msg || quoted).mimetype || '';
 
         if (!/image/.test(mime)) {
-            return m.reply("❌ *ERROR:* Please quote an image with `.setpp` to update your profile.");
+            return m.reply("❌ *ERROR:* Please quote an image with `.setpp` to update the profile picture.");
         }
 
         await sock.sendMessage(m.key.remoteJid, { react: { text: "🎭", key: m.key } });
 
         try {
-            // 3. DOWNLOAD & UPDATE (Host Only)
+            // 3. DOWNLOAD & DEPLOY IDENTITY
             const buffer = await quoted.download();
-            await sock.updateProfilePicture(sock.user.id, buffer);
+            
+            // Tunahakikisha tunatumia jid ya bot yenyewe (sock.user.id)
+            const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+            await sock.updateProfilePicture(botId, buffer);
 
             // 4. SUCCESS REPORT
             let setMsg = `╭━━━〔 🎭 *VEX: IDENTITY-SET* 〕━━━╮\n`;
@@ -47,7 +50,7 @@ module.exports = {
 
         } catch (e) {
             console.error("SetPP Error:", e);
-            m.reply("❌ *UPDATE FAIL:* The server rejected the new identity.");
+            m.reply("❌ *UPDATE FAIL:* The server rejected the new identity. Ensure the image is not too large.");
         }
     }
 };
