@@ -29,11 +29,11 @@ const httpServer = createServer(app);
 const io = new Server(httpServer);
 const PORT = process.env.PORT || 10000;
 
-const botInstances = new Map(); // To manage all online sub-bots
+const botInstances = new Map(); 
 const commands = new Map();
 const cmdPath = path.join(__dirname, 'vex');
 
-// 2. SUPABASE CLOUD SYNC FOR MULTI-SESSION
+// 2. SUPABASE CLOUD SYNC
 async function syncToCloud(jid, creds) {
     try {
         const base64Data = Buffer.from(JSON.stringify(creds)).toString('base64');
@@ -52,17 +52,29 @@ async function getSession(jid) {
     } catch (e) { return null; }
 }
 
-// 3. CORE BOT ENGINE (INSTANCING)
-async function startVexInstance(jid, usePairing = false, phoneNumber = null) {
+// LOAD COMMANDS
+function loadCommands() {
+    if (fs.existsSync(cmdPath)) {
+        fs.readdirSync(cmdPath).filter(f => f.endsWith('.js')).forEach(file => {
+            try {
+                const cmd = require(path.join(cmdPath, file));
+                commands.set(cmd.vex || file.split('.')[0], cmd);
+            } catch (e) { console.error(`🔥 [LOAD ERROR] ${file}:`, e.message); }
+        });
+        console.log(`📁 [VEX]: ${commands.size} Commands Loaded.`);
+    }
+}
+
+// 3. CORE BOT ENGINE
+async function startVexInstance(jid, usePairing = false, phoneNumber = null, m = null) {
     if (botInstances.has(jid)) return;
 
     const sessionDir = `./sessions/${jid.split('@')[0]}`;
     if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-    
-    // Restore creds if available in cloud
     const cloudCreds = await getSession(jid);
+    
     if (cloudCreds && !state.creds.registered) {
         state.creds = cloudCreds;
     }
@@ -79,13 +91,22 @@ async function startVexInstance(jid, usePairing = false, phoneNumber = null) {
         browser: ["VEX-CORE", "Chrome", "3.0.0"]
     });
 
-    // Handle Pairing Code
+    // Handle Pairing Code (For Sub-bots)
     if (usePairing && phoneNumber && !sock.authState.creds.registered) {
         setTimeout(async () => {
-            let code = await sock.requestPairingCode(phoneNumber);
-            code = code?.match(/.{1,4}/g)?.join('-') || code;
-            console.log(`📲 [PAIRING CODE FOR ${phoneNumber}]: ${code}`);
-            io.emit('pairing_code', { jid, code });
+            try {
+                let code = await sock.requestPairingCode(phoneNumber);
+                code = code?.match(/.{1,4}/g)?.join('-') || code;
+                console.log(`📲 [PAIRING CODE FOR ${phoneNumber}]: ${code}`);
+                
+                // If requested via WhatsApp command, send code to DM
+                if (m) {
+                    await botInstances.get(process.env.ADMIN_JID)?.sendMessage(m.key.remoteJid, { 
+                        text: `✅ *VEX PAIRING CODE*\n\nCode: *${code}*\n\nLink this in WhatsApp Settings.` 
+                    });
+                }
+                io.emit('pairing_code', { jid, code });
+            } catch (err) { console.error("Pairing Error:", err); }
         }, 3000);
     }
 
@@ -98,7 +119,9 @@ async function startVexInstance(jid, usePairing = false, phoneNumber = null) {
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-        if (qr) io.emit('qr', { jid, qr });
+        
+        // QR only for Admin/Website
+        if (qr && jid === process.env.ADMIN_JID) io.emit('qr', { jid, qr });
 
         if (connection === 'close') {
             const code = lastDisconnect?.error?.output?.statusCode;
@@ -106,11 +129,13 @@ async function startVexInstance(jid, usePairing = false, phoneNumber = null) {
                 startVexInstance(jid);
             } else {
                 botInstances.delete(jid);
-                console.log(`🔌 [LOGGED OUT]: ${jid}`);
+                await supabase.from('users_bots').update({ is_active: false }).eq('user_jid', jid);
             }
         } else if (connection === 'open') {
-            console.log(`✅ [VEX ONLINE]: ${jid}`);
+            console.log(`✅ [CONNECTED]: ${jid}`);
+            io.emit('connected', { jid });
             await syncToCloud(jid, state.creds);
+            await supabase.from('users_bots').upsert({ user_jid: jid, is_active: true });
         }
     });
 
@@ -118,7 +143,6 @@ async function startVexInstance(jid, usePairing = false, phoneNumber = null) {
         const m = chatUpdate.messages[0];
         if (!m.message || m.key.fromMe) return;
 
-        // COMMAND HANDLER LOGIC
         const type = getContentType(m.message);
         const body = (type === 'conversation') ? m.message.conversation : 
                      (type === 'extendedTextMessage') ? m.message.extendedTextMessage.text : '';
@@ -127,15 +151,14 @@ async function startVexInstance(jid, usePairing = false, phoneNumber = null) {
 
         const args = body.slice(1).trim().split(/ +/);
         const cmdName = args.shift().toLowerCase();
-        
-        // Lazy Loading check
         const cmd = commands.get(cmdName);
+
         if (cmd) {
-            // Check User Status from Supabase before executing
             const { data: user } = await supabase.from('users_bots').select('*').eq('user_jid', jid).single();
             if (user && user.is_active) {
+                m.reply = (txt) => sock.sendMessage(m.key.remoteJid, { text: txt }, { quoted: m });
                 try {
-                    await cmd.execute(m, sock, { args, user });
+                    await cmd.execute(m, sock, { args, user, commands });
                     await supabase.rpc('increment_command_count', { row_id: jid });
                 } catch (e) { console.error(e); }
             }
@@ -145,6 +168,9 @@ async function startVexInstance(jid, usePairing = false, phoneNumber = null) {
     return sock;
 }
 
+// Global hook for subbot.js
+global.startNewInstance = startVexInstance;
+
 // 4. ADMIN REALTIME CONTROLLER
 supabase.channel('admin_control')
   .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users_bots' }, (payload) => {
@@ -152,19 +178,51 @@ supabase.channel('admin_control')
     if (!is_active && botInstances.has(user_jid)) {
         botInstances.get(user_jid).logout();
         botInstances.delete(user_jid);
-        console.log(`🚫 [TERMINATED BY ADMIN]: ${user_jid}`);
     }
   }).subscribe();
 
-// Start Server & Initial Load
+// WEB INTERFACE (QR FOR ADMIN)
+app.get('/', (req, res) => {
+    res.send(`<!DOCTYPE html><html><head><title>VEX MASTER</title></head>
+    <body style="background:#000; color:#0f0; text-align:center; font-family:monospace; padding-top:50px;">
+        <h1>VEX SYSTEM TERMINAL</h1>
+        <div id="qr-box"><img id="qr-img" src="" style="display:none; width:300px; border:2px solid #0f0; padding:10px;"></div>
+        <h2 id="status">INITIALIZING...</h2>
+        <script src="/socket.io/socket.io.js"></script>
+        <script>
+            const socket = io();
+            socket.on('qr', (data) => {
+                document.getElementById('qr-img').src = data.qr;
+                document.getElementById('qr-img').style.display = 'inline';
+                document.getElementById('status').innerText = 'SCAN TO ACTIVATE ADMIN';
+            });
+            socket.on('connected', () => {
+                document.getElementById('qr-img').style.display = 'none';
+                document.getElementById('status').innerText = 'SYSTEM ONLINE ✅';
+                document.getElementById('status').style.color = '#00ff00';
+            });
+        </script>
+    </body></html>`);
+});
+
+// START SERVER
 httpServer.listen(PORT, async () => {
-    console.log(`🚀 [VEX SYSTEM] Running on port ${PORT}`);
-    // Load existing bots from DB on startup
+    console.log(`🚀 [VEX MASTER] Port: ${PORT}`);
+    loadCommands();
+
+    // Start Admin Bot first
+    if (process.env.ADMIN_JID) {
+        await startVexInstance(process.env.ADMIN_JID);
+    }
+
+    // Restore other active bots
     const { data: bots } = await supabase.from('users_bots').select('user_jid').eq('is_active', true);
     if (bots) {
         for (const bot of bots) {
-            await startVexInstance(bot.user_jid);
-            await delay(5000); // Avoid spamming WhatsApp servers
+            if (bot.user_jid !== process.env.ADMIN_JID) {
+                await startVexInstance(bot.user_jid);
+                await delay(5000);
+            }
         }
     }
 });
