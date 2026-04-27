@@ -20,6 +20,7 @@ const fs = require("fs");
 const express = require("express");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
+const QRCode = require('qrcode'); // Hii ndio akili ya kutengeneza picha
 const { createClient } = require('@supabase/supabase-js');
 
 // 1. INITIALIZATION
@@ -91,7 +92,7 @@ async function startVexInstance(jid, usePairing = false, phoneNumber = null, m =
         browser: ["VEX-CORE", "Chrome", "3.0.0"]
     });
 
-    // Handle Pairing Code (For Sub-bots)
+    // Handle Pairing Code (Used by subbot.js)
     if (usePairing && phoneNumber && !sock.authState.creds.registered) {
         setTimeout(async () => {
             try {
@@ -99,7 +100,6 @@ async function startVexInstance(jid, usePairing = false, phoneNumber = null, m =
                 code = code?.match(/.{1,4}/g)?.join('-') || code;
                 console.log(`📲 [PAIRING CODE FOR ${phoneNumber}]: ${code}`);
                 
-                // If requested via WhatsApp command, send code to DM
                 if (m) {
                     await botInstances.get(process.env.ADMIN_JID)?.sendMessage(m.key.remoteJid, { 
                         text: `✅ *VEX PAIRING CODE*\n\nCode: *${code}*\n\nLink this in WhatsApp Settings.` 
@@ -120,8 +120,13 @@ async function startVexInstance(jid, usePairing = false, phoneNumber = null, m =
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         
-        // QR only for Admin/Website
-        if (qr && jid === process.env.ADMIN_JID) io.emit('qr', { jid, qr });
+        // QR Logic using Base64 DataURL (Fixed)
+        if (qr && jid === process.env.ADMIN_JID) {
+            try {
+                const qrImage = await QRCode.toDataURL(qr);
+                io.emit('qr', { jid, qr: qrImage });
+            } catch (err) { console.error("QR Generation Error:", err); }
+        }
 
         if (connection === 'close') {
             const code = lastDisconnect?.error?.output?.statusCode;
@@ -168,7 +173,6 @@ async function startVexInstance(jid, usePairing = false, phoneNumber = null, m =
     return sock;
 }
 
-// Global hook for subbot.js
 global.startNewInstance = startVexInstance;
 
 // 4. ADMIN REALTIME CONTROLLER
@@ -181,25 +185,28 @@ supabase.channel('admin_control')
     }
   }).subscribe();
 
-// WEB INTERFACE (QR FOR ADMIN)
+// WEB INTERFACE
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html><html><head><title>VEX MASTER</title></head>
     <body style="background:#000; color:#0f0; text-align:center; font-family:monospace; padding-top:50px;">
         <h1>VEX SYSTEM TERMINAL</h1>
-        <div id="qr-box"><img id="qr-img" src="" style="display:none; width:300px; border:2px solid #0f0; padding:10px;"></div>
-        <h2 id="status">INITIALIZING...</h2>
+        <div id="qr-box"><img id="qr-img" src="" style="display:none; width:300px; border:2px solid #0f0; padding:10px; background:#fff;"></div>
+        <h2 id="status">WAITING FOR CORE...</h2>
         <script src="/socket.io/socket.io.js"></script>
         <script>
             const socket = io();
+            const qrImg = document.getElementById('qr-img');
+            const status = document.getElementById('status');
+
             socket.on('qr', (data) => {
-                document.getElementById('qr-img').src = data.qr;
-                document.getElementById('qr-img').style.display = 'inline';
-                document.getElementById('status').innerText = 'SCAN TO ACTIVATE ADMIN';
+                qrImg.src = data.qr;
+                qrImg.style.display = 'inline';
+                status.innerText = 'SCAN TO ACTIVATE ADMIN';
             });
             socket.on('connected', () => {
-                document.getElementById('qr-img').style.display = 'none';
-                document.getElementById('status').innerText = 'SYSTEM ONLINE ✅';
-                document.getElementById('status').style.color = '#00ff00';
+                qrImg.style.display = 'none';
+                status.innerText = 'SYSTEM ONLINE ✅';
+                status.style.color = '#00ff00';
             });
         </script>
     </body></html>`);
@@ -210,12 +217,10 @@ httpServer.listen(PORT, async () => {
     console.log(`🚀 [VEX MASTER] Port: ${PORT}`);
     loadCommands();
 
-    // Start Admin Bot first
     if (process.env.ADMIN_JID) {
         await startVexInstance(process.env.ADMIN_JID);
     }
 
-    // Restore other active bots
     const { data: bots } = await supabase.from('users_bots').select('user_jid').eq('is_active', true);
     if (bots) {
         for (const bot of bots) {
