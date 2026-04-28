@@ -1,42 +1,42 @@
 const translate = require('google-translate-api-x');
 
 module.exports = {
-    command: "promote",
-    alias: ["admin", "makeadmin", "up"],
+    command: "demote",
+    alias: ["unadmin", "down", "degrade"],
     category: "group",
-    description: "Promote a user to admin with high-speed execution",
+    description: "Remove admin rights with high-speed execution",
 
     async execute(m, sock, { args, userSettings }) {
-        if (!m.isGroup) return m.reply("⚓ This command is for groups only.");
+        if (!m.isGroup) return m.reply("⚓ This command is restricted to groups.");
         
         const lang = args[0] && args[0].length === 2 ? args[0] : (userSettings?.lang || 'en');
         const style = userSettings?.style || 'harsh';
 
-        // 1. UNIQUE DESIGNS (Royalty & Gear Symbols - No Lines)
+        // 1. UNIQUE DESIGNS (Demotion & Fall Symbols - No Lines)
         const modes = {
             harsh: {
-                msg: "♚ ᴜsᴇʀ † $number † ᴇʟᴇᴠᴀᴛᴇᴅ ᴛᴏ ᴛʜᴇ ᴛʜʀᴏɴᴇ. ⚔",
-                noBotAdmin: "⚙ ɪ ᴀᴍ ɴᴏᴛ ᴀɴ ᴀᴅᴍɪɴ. ɢɪᴠᴇ ᴍᴇ ᴛʜᴇ ʜᴀᴍᴍᴇʀ. 🤡",
-                noUserAdmin: "⚙ ʏᴏᴜ ᴀʀᴇ ᴀ ᴘᴇᴀsᴀɴᴛ. ᴅᴏɴ'ᴛ ᴛᴏᴜᴄʜ ᴍʏ ᴄᴏɴsᴏʟᴇ. 🖕",
-                targetAdmin: "⚙ ᴛʜᴇʏ ᴀʟʀᴇᴀᴅʏ ʜᴏʟᴅ ᴛʜᴇ ᴄrown. 👑",
+                msg: "⚑ ᴀᴅᴍɪɴ ᴘᴏᴡᴇʀ ʀᴇᴠᴏᴋᴇᴅ ▼ $number ▼ ʙᴀᴄᴋ ᴛᴏ ᴛʜᴇ ᴅᴜsᴛ. 💀",
+                noBotAdmin: "⚒ ɪ ᴄᴀɴɴᴏᴛ sᴛʀɪᴘ ᴘᴏᴡᴇʀ ᴡɪᴛʜᴏᴜᴛ ᴀᴅᴍɪɴ ʀɪɢʜᴛs. 🤡",
+                noUserAdmin: "⚒ ʏᴏᴜ ʜᴀᴠᴇ ɴᴏ ʀᴀɴᴋ ᴛᴏ ᴅᴇᴍᴏᴛᴇ ᴀɴʏᴏɴᴇ. 🖕",
+                targetNotAdmin: "⚒ ᴛᴀʀɢᴇᴛ ɪs ᴀʟʀᴇᴀᴅʏ ᴀ ʟᴏᴡ-ʟᴇᴠᴇʟ ᴍᴇᴍʙᴇʀ. ▽",
                 react: "🦾",
-                err: "⚓ ᴡʜᴏ ɪs ᴡᴏʀᴛʜʏ? ᴛᴀɢ, ʀᴇᴘʟʏ ᴏʀ ᴛʏᴘᴇ ᴀ ɴᴜᴍʙᴇʀ. 👺"
+                err: "⚓ ᴡʜᴏ ᴀʀᴇ ᴡᴇ ᴅᴇɢʀᴀᴅɪɴɢ? ᴛᴀɢ, ʀᴇᴘʟʏ ᴏʀ ᴛʏᴘᴇ ᴀ ɴᴜᴍʙᴇʀ. 👺"
             },
             normal: {
-                msg: "♔ *User:* $number *is now an Admin.* ✅",
-                noBotAdmin: "⚙ *Error: Bot needs Admin to promote.*",
-                noUserAdmin: "⚙ *Access Denied: Admin only.*",
-                targetAdmin: "♔ *Note: User is already an Admin.*",
+                msg: "♜ *User:* $number *has been demoted to Member.* ✅",
+                noBotAdmin: "⚒ *Error: Bot needs Admin status to demote.*",
+                noUserAdmin: "⚒ *Access Denied: Admins only.*",
+                targetNotAdmin: "♜ *Note: User is not an Admin.*",
                 react: "📥",
                 err: "⚓ *Identify the user via tag, reply, or number.*"
             },
             girl: {
-                msg: "♕ 𝓎𝒶𝓎! † $number † 𝒾𝓈 𝓃ℴ𝓌 𝒶 𝓆𝓊ℯℯ𝓃! ✨🌷",
-                noBotAdmin: "🎀 𝒾 𝓃ℯℯ𝒹 𝓉ℴ 𝒷ℯ 𝒶𝒹𝓂𝒾𝓃 𝒻𝒾𝓇𝓈𝓉 𝒷𝒶𝒷ℯ... 🌸",
-                noUserAdmin: "🎀 𝓈ℴ𝓇𝓇𝓎 𝒹ℴ𝓁𝓁, ℴ𝓃𝓁𝓎 𝒶𝒹𝓂𝒾𝓃𝓈 𝒽ℯ𝓇ℯ... ✨",
-                targetAdmin: "🎀 𝓉𝒽ℯ𝓎 𝒶𝓇ℯ 𝒶𝓁𝓇ℯ𝒶𝒹𝓎 𝒶𝒹𝓂𝒾𝓃! ♕",
+                msg: "🌸 ℴℴ𝓅𝓈𝒾ℯ! ▼ $number ▼ 𝓁ℴ𝓈т 𝓉𝒽ℯ𝒾𝓇 𝒸𝓇ℴ𝓌𝓃... ✨🌷",
+                noBotAdmin: "🎀 𝒾 𝓃ℯℯ𝒹 𝓉ℴ 𝒷ℯ 𝒶𝒹𝓂𝒾𝓃 𝒻𝒾𝓇𝓈т 𝓁ℴ𝓋ℯ... 🌸",
+                noUserAdmin: "🎀 𝓈ℴ𝓇𝓇𝓎 𝒷𝒶𝒷ℯ, 𝓎ℴ𝓊 𝒶𝓇ℯ 𝓃ℴт 𝒶𝒹𝓂𝒾𝓃... ✨",
+                targetNotAdmin: "🌸 𝓉𝒽ℯ𝓎 𝒶𝓇ℯ 𝒶𝓁𝓇ℯ𝒶𝒹𝓎 𝒶 𝓃ℴ𝓇𝓂𝒶𝓁 𝓂ℯ𝓂𝒷ℯ𝓇! ▽",
                 react: "🦋",
-                err: "⚓ 𝓌𝒽ℴ 𝒹ℯ𝓈ℯ𝓇𝓋ℯ𝓈 𝒶 𝓅𝓇ℴ𝓂ℴ𝓉𝒾ℴ𝓃? 𝓉𝒶ℊ 𝓉𝒽ℯ𝓂! 🧸"
+                err: "⚓ 𝓌𝒽ℴ 𝓈𝒽ℴ𝓊𝓁𝒹 𝒾 𝒹ℯ𝓂ℴтℯ? т𝒶ℊ т𝒽ℯ𝓂! 🧸"
             }
         };
 
@@ -53,14 +53,14 @@ module.exports = {
             // Speed Reaction
             await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
 
-            // 3. EXECUTION FIRST (Try first to bypass delay)
-            const response = await sock.groupParticipantsUpdate(m.chat, [user], "promote");
+            // 3. EXECUTION ATTEMPT (Bypassing pre-checks for speed)
+            const response = await sock.groupParticipantsUpdate(m.chat, [user], "demote");
 
-            // Handle hidden failures from server
+            // Handle server-side errors
             if (response[0].status === "401") throw new Error("noBotAdmin");
-            if (response[0].status === "404") throw new Error("targetAdmin");
+            if (response[0].status === "404") throw new Error("targetNotAdmin");
 
-            // 4. FINAL OUTPUT
+            // 4. OUTPUT
             let rawNumber = user.split('@')[0];
             let finalMsg = current.msg.replace('$number', rawNumber);
 
@@ -68,13 +68,13 @@ module.exports = {
                 try {
                     const res = await translate(current.msg, { to: lang });
                     finalMsg = res.text.replace('$number', rawNumber);
-                } catch (e) { console.log("Translation skip"); }
+                } catch (e) { console.log("Translation failed."); }
             }
 
             await sock.sendMessage(m.chat, { text: finalMsg }, { quoted: m });
 
         } catch (error) {
-            // 5. ERROR ANALYSIS (If execution fails)
+            // 5. POST-ERROR ANALYSIS
             const groupMetadata = await sock.groupMetadata(m.chat);
             const participants = groupMetadata.participants;
             const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
@@ -85,10 +85,10 @@ module.exports = {
 
             if (!isUserAdmin) return m.reply(current.noUserAdmin);
             if (!isBotAdmin) return m.reply(current.noBotAdmin);
-            if (isTargetAdmin) return m.reply(current.targetAdmin);
+            if (!isTargetAdmin) return m.reply(current.targetNotAdmin);
 
-            console.error("Promote Error:", error);
-            await sock.sendMessage(m.chat, { text: `⚙ *SYSTEM ERROR:* ${error.message}` });
+            console.error("Demote Error:", error);
+            await sock.sendMessage(m.chat, { text: `⚒ *SYSTEM ERROR:* ${error.message}` });
         }
     }
 };
