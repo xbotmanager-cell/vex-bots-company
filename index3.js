@@ -1,6 +1,7 @@
 /**
- * VEX MINI BOT - ULTIMATE CLOUD SYNC (V2 ENGINE)
+ * VEX MINI BOT - ULTIMATE CLOUD SYNC (V2 ENGINE - FIXED)
  * Feature: Folder Switcher, Realtime Modes, Silent Mode, Auto-Automation
+ * Fixed: JID Decoding Error & Public Access
  * Dev: Lupin Starnley
  */
 
@@ -12,6 +13,7 @@ const {
     fetchLatestBaileysVersion, 
     makeCacheableSignalKeyStore,
     getContentType,
+    jidDecode, // Imeongezwa hapa
     delay
 } = require("@whiskeysockets/baileys");
 const pino = require("pino");
@@ -32,9 +34,17 @@ const io = new Server(server);
 const PORT = process.env.PORT || 10000;
 
 let commands = new Map();
-let currentPath = path.join(__dirname, 'plugins'); // Default path
+let currentPath = path.join(__dirname, 'plugins');
 
-// Real-time Settings Cache
+// JID Decoder Function (Fixes "Cannot destructure property user" error)
+const decodeJid = (jid) => {
+    if (!jid) return jid;
+    if (/:\d+@/gi.test(jid)) {
+        let decode = jidDecode(jid) || {};
+        return decode.user && decode.server && decode.user + '@' + decode.server || jid;
+    } else return jid;
+};
+
 let vexSettings = {
     mode: 'normal',
     path: 'plugins',
@@ -60,34 +70,30 @@ async function loadSessionFromCloud() {
             fs.writeFileSync('./session/creds.json', decoded);
             console.log('✅ [VEX]: Cloud Session Restored.');
         }
-    } catch (e) { console.log('ℹ️ [VEX]: No cloud session found, starting fresh.'); }
+    } catch (e) { console.log('ℹ️ [VEX]: No cloud session found.'); }
 }
 
 async function loadVexSettings() {
     try {
         const { data } = await supabase.from('vex_settings').select('*');
         if (data) {
-            data.forEach(s => {
-                vexSettings[s.setting_name] = s.value;
-            });
-            // Update currentPath from DB
+            data.forEach(s => { vexSettings[s.setting_name] = s.value; });
             currentPath = path.join(__dirname, vexSettings['path'] || 'plugins');
         }
     } catch (e) { console.error('⚙️ [SETTINGS LOAD ERROR]:', e.message); }
 }
 
-// REAL-TIME LISTENER (Kila kitu kinabadilika hapa bila restart)
+// REAL-TIME LISTENER
 supabase
   .channel('settings_changes')
   .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'vex_settings' }, (payload) => {
     const updated = payload.new;
     vexSettings[updated.setting_name] = updated.value;
-    
     if (updated.setting_name === 'path') {
         currentPath = path.join(__dirname, updated.value);
-        loadCommands(); // Reload commands from new path
+        loadCommands();
     }
-    console.log(`🔄 [REALTIME]: ${updated.setting_name} set to ${updated.value}`);
+    console.log(`🔄 [REALTIME]: ${updated.setting_name} updated.`);
   })
   .subscribe();
 
@@ -97,7 +103,6 @@ function loadCommands() {
     if (fs.existsSync(currentPath)) {
         fs.readdirSync(currentPath).filter(f => f.endsWith('.js')).forEach(file => {
             try {
-                // Clear cache to allow realtime reload
                 delete require.cache[require.resolve(path.join(currentPath, file))];
                 const cmd = require(path.join(currentPath, file));
                 commands.set(cmd.command || file.split('.')[0], cmd);
@@ -126,10 +131,10 @@ async function startVex() {
         browser: ["VEX-CORE", "Chrome", "3.0.0"]
     });
 
-    // --- MAIN MESSAGE HANDLER ---
     sock.ev.on('messages.upsert', async (chatUpdate) => {
         const m = chatUpdate.messages[0];
         if (!m.message) return;
+        
         const remoteJid = m.key.remoteJid;
         const type = getContentType(m.message);
         const body = (type === 'conversation') ? m.message.conversation : 
@@ -137,54 +142,51 @@ async function startVex() {
                      (type === 'imageMessage') ? m.message.imageMessage.caption : 
                      (type === 'videoMessage') ? m.message.videoMessage.caption : '';
 
+        // PUBLIC ACCESS LOGIC (Inakubali kote kote)
+        m.chat = remoteJid;
+        m.isGroup = m.chat.endsWith('@g.us');
+        m.sender = decodeJid(m.isGroup ? m.key.participant : m.chat);
+
         // 1. AUTO STATUS LIKE
         if (vexSettings['autostatus_like'] === true && remoteJid === 'status@broadcast') {
             await sock.readMessages([m.key]);
             await sock.sendMessage('status@broadcast', { react: { text: '💜', key: m.key } }, { statusJidList: [m.key.participant] });
         }
 
-        // 2. AUTO REACT (Public)
+        // 2. AUTO REACT
         if (vexSettings['autoreact'] === true && !m.key.fromMe) {
             await sock.sendMessage(remoteJid, { react: { text: '✨', key: m.key } });
         }
 
-        // 3. VEX CORE CONTROLLER (.vex command)
+        // 3. VEX CORE CONTROLLER
         if (body.startsWith('.vex')) {
             const args = body.slice(5).trim().split(/ +/);
             const subCmd = args[0]?.toLowerCase();
             const value = args[1]?.toLowerCase();
 
             if (!subCmd) {
-                // .vex menu design
-                const menu = `╭━━━〔 *VEX CONTROL* 〕━━━╮\n`
-                           + `┃ 📁 *Path:* ${path.basename(currentPath)}\n`
-                           + `┃ 🎭 *Mode:* ${vexSettings['mode']}\n`
-                           + `┃ 🔇 *Msg:* ${vexSettings['message']}\n`
-                           + `┃ 💜 *AutoStatus:* ${vexSettings['autostatus_like']}\n`
-                           + `┃ ⚡ *AutoReact:* ${vexSettings['autoreact']}\n`
-                           + `╰━━━━━━━━━━━━━━━━━━━━╯\n\n_Use .vex [setting] [value]_`;
+                const menu = `╭━━━〔 *VEX CONTROL* 〕━━━╮\n┃ 📁 *Path:* ${path.basename(currentPath)}\n┃ 🎭 *Mode:* ${vexSettings['mode']}\n┃ 🔇 *Msg:* ${vexSettings['message']}\n┃ 💜 *AutoStatus:* ${vexSettings['autostatus_like']}\n┃ ⚡ *AutoReact:* ${vexSettings['autoreact']}\n╰━━━━━━━━━━━━━━━━━━━━╯`;
                 return await sock.sendMessage(remoteJid, { text: menu }, { quoted: m });
             }
 
-            // Realtime Update Logic
             if (['plugins', 'vex'].includes(subCmd)) {
                 await supabase.from('vex_settings').upsert({ setting_name: 'path', value: subCmd });
-                return m.reply(`✅ Path switched to: ${subCmd}`);
+                return m.reply(`✅ Path: ${subCmd}`);
             }
             if (['harsh', 'normal', 'girl'].includes(value) && subCmd === 'mode') {
                 await supabase.from('vex_settings').upsert({ setting_name: 'mode', value: value });
-                return m.reply(`🎭 VEX Soul: ${value.toUpperCase()}`);
+                return m.reply(`🎭 Soul: ${value.toUpperCase()}`);
             }
             if (['on', 'off'].includes(value)) {
                 const settingMap = { autostatus: 'autostatus_like', autoreact: 'autoreact', message: 'message' };
                 const dbKey = settingMap[subCmd] || subCmd;
                 const dbValue = (value === 'on' ? true : (value === 'off' ? false : value));
                 await supabase.from('vex_settings').upsert({ setting_name: dbKey, value: dbValue });
-                return m.reply(`⚙️ ${subCmd.toUpperCase()} set to ${value}`);
+                return m.reply(`⚙️ ${subCmd.toUpperCase()}: ${value}`);
             }
         }
 
-        // 4. MENU SELECTION LOGIC (As requested)
+        // 4. MENU SELECTION
         if (m.message.extendedTextMessage?.contextInfo?.quotedMessage?.conversation?.includes("VEX") && !isNaN(body)) {
             const selectedNumber = parseInt(body) - 1;
             const files = fs.readdirSync(currentPath).filter(file => file.endsWith('.js'));
@@ -196,7 +198,6 @@ async function startVex() {
                 if (p.category && !categories.includes(p.category)) categories.push(p.category);
             });
             categories.sort();
-
             if (categories[selectedNumber]) {
                 const selectedCat = categories[selectedNumber];
                 const filtered = plugins.filter(p => p.category === selectedCat);
@@ -206,25 +207,18 @@ async function startVex() {
             }
         }
 
-        // 5. COMMAND EXECUTION ENGINE
+        // 5. COMMAND EXECUTION
         if (!body.startsWith('.')) return;
         const args = body.slice(1).trim().split(/ +/);
         const cmdName = args.shift().toLowerCase();
         const cmd = commands.get(cmdName);
 
         if (cmd) {
-            // Inject Settings for Plugins to use
-            const userSettings = { 
-                style: vexSettings['mode'], 
-                silent: (vexSettings['message'] === false || vexSettings['message'] === 'off') 
-            };
-
-            // Custom Reply Logic (Checks Silent Mode)
+            const userSettings = { style: vexSettings['mode'], silent: (vexSettings['message'] === false || vexSettings['message'] === 'off') };
             m.reply = async (txt) => {
-                if (userSettings.silent) return; // Don't send text if silent
+                if (userSettings.silent) return;
                 return sock.sendMessage(remoteJid, { text: txt }, { quoted: m });
             };
-
             try {
                 await cmd.execute(m, sock, { args, userSettings });
             } catch (err) { 
