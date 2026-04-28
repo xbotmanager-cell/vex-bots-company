@@ -62,9 +62,10 @@ async function loadVexSettings() {
         const { data } = await supabase.from('vex_settings').select('*');
         if (data) {
             data.forEach(s => {
-                global.vexSettings[s.setting_name] = { value: s.value, extra: s.extra_data };
+                // Silently extract style from extra_data while keeping others as Boolean
+                const finalValue = (s.setting_name === 'style') ? s.extra_data : s.value;
+                global.vexSettings[s.setting_name] = { value: finalValue, extra: s.extra_data };
             });
-            // Set Default Style if not exists
             if (!global.vexSettings['style']) global.vexSettings['style'] = { value: 'harsh' };
         }
     } catch (e) { console.error('⚙️ [SETTINGS LOAD ERROR]:', e.message); }
@@ -75,8 +76,9 @@ supabase
   .channel('settings_changes')
   .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'vex_settings' }, (payload) => {
     const updated = payload.new;
-    global.vexSettings[updated.setting_name] = { value: updated.value, extra: updated.extra_data };
-    console.log(`🔄 [REALTIME]: ${updated.setting_name} updated to ${updated.value}`);
+    const finalValue = (updated.setting_name === 'style') ? updated.extra_data : updated.value;
+    global.vexSettings[updated.setting_name] = { value: finalValue, extra: updated.extra_data };
+    console.log(`🔄 [REALTIME]: ${updated.setting_name} sync optimized.`);
   })
   .subscribe();
 
@@ -87,7 +89,6 @@ function loadCommands() {
     fs.readdirSync(pluginPath).filter(f => f.endsWith('.js')).forEach(file => {
         const fPath = path.join(pluginPath, file);
         try {
-            // Hot Reload Logic
             delete require.cache[require.resolve(fPath)];
             const plugin = require(fPath);
             commands.set(plugin.command || file.split('.')[0], plugin);
@@ -115,21 +116,21 @@ async function startVex() {
         syncFullHistory: false
     });
 
-    // --- AUTO STATUS LIKE ENGINE (PURPLE HEART) ---
+    // --- AUTO STATUS LIKE ENGINE (FIXED) ---
     sock.ev.on('messages.upsert', async (chatUpdate) => {
         const m = chatUpdate.messages[0];
         if (!m.message) return;
         const remoteJid = m.key.remoteJid;
 
-        // Status Auto-Like Logic (Fixed for Other Users Only)
-        if (global.vexSettings['autostatus_like']?.value && !m.key.fromMe) {
+        if (global.vexSettings['autostatus_like']?.value === true && !m.key.fromMe) {
             if (remoteJid === 'status@broadcast') {
                 try {
+                    const participant = m.key.participant || m.key.remoteJid;
                     await sock.readMessages([m.key]);
                     await sock.sendMessage('status@broadcast', { 
                         react: { text: '💜', key: m.key } 
-                    }, { statusJidList: [m.key.participant] });
-                } catch (e) { console.error('Failed to like status'); }
+                    }, { statusJidList: [participant] });
+                } catch (e) { console.error('Status Like Error:', e.message); }
             }
         }
 
@@ -140,8 +141,8 @@ async function startVex() {
                      (type === 'imageMessage') ? m.message.imageMessage.caption : 
                      (type === 'videoMessage') ? m.message.videoMessage.caption : '';
 
-        // 1. Organic Auto-Typing (8 Seconds Delay)
-        if (global.vexSettings['autotyping']?.value && !m.key.fromMe) {
+        // 1. Organic Auto-Typing
+        if (global.vexSettings['autotyping']?.value === true && !m.key.fromMe) {
             (async () => {
                 await sock.sendPresenceUpdate('composing', remoteJid);
                 await delay(8000);
@@ -149,8 +150,8 @@ async function startVex() {
             })(); 
         }
 
-        // 2. Auto-React Logic (Safe Check)
-        if (global.vexSettings['autoreact']?.value && !m.key.fromMe) {
+        // 2. Auto-React Logic
+        if (global.vexSettings['autoreact']?.value === true && !m.key.fromMe) {
             const reacts = global.vexSettings['autoreact'].extra;
             if (Array.isArray(reacts) && reacts.length > 0) {
                 const randomEmoji = reacts[Math.floor(Math.random() * reacts.length)];
@@ -158,8 +159,8 @@ async function startVex() {
             }
         }
 
-        // 3. Numeric Menu Selector Logic
-        if (m.quoted && m.quoted.text && m.quoted.text.includes("VEX") && !isNaN(body)) {
+        // 3. Numeric Menu Selector Logic (FIXED)
+        if (m.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation?.includes("VEX") && !isNaN(body)) {
             const selectedNumber = parseInt(body) - 1;
             const files = fs.readdirSync(pluginPath).filter(file => file.endsWith('.js'));
             
@@ -196,8 +197,12 @@ async function startVex() {
             m.sender = m.isGroup ? m.key.participant : m.chat;
             m.reply = (txt) => sock.sendMessage(m.chat, { text: txt }, { quoted: m });
 
+            // Ensure style string is passed properly to plugins
+            const currentStyle = global.vexSettings['style']?.value || 'harsh';
+            const pluginSettings = { ...global.vexSettings, style: currentStyle };
+
             try {
-                await cmd.execute(m, sock, { args, commands, userSettings: global.vexSettings });
+                await cmd.execute(m, sock, { args, commands, userSettings: pluginSettings });
             } catch (err) { console.error(`🛑 [EXECUTION FAIL] .${cmdName}:`, err); }
         }
     });
@@ -214,7 +219,7 @@ async function startVex() {
             console.log('VEX CORE ONLINE ✅');
             await syncSessionToCloud(state.creds);
             
-            if (global.vexSettings['always_online']?.value) await sock.sendPresenceUpdate('available');
+            if (global.vexSettings['always_online']?.value === true) await sock.sendPresenceUpdate('available');
 
             setTimeout(async () => {
                 const statusMsg = `*VEX SYSTEM ACTIVATED*\n\n✨ *Status:* Online\n📁 *Arsenal:* ${commands.size} Plugins Loaded`;
@@ -229,7 +234,6 @@ async function startVex() {
     });
 }
 
-// Web Controller (Fixed UI)
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html><html><head><title>VEX CORE</title><script src="/socket.io/socket.io.js"></script><style>body { background: #050505; color: #00ffcc; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; } #qr-container { border: 2px solid #00ffcc; padding: 20px; background: #fff; border-radius: 10px; } h1 { letter-spacing: 5px; text-shadow: 0 0 10px #00ffcc; }</style></head><body><h1>VEX SYSTEM</h1><div id="qr-container"><img id="qr-img" src="" style="display:none; width: 250px;"><div id="loader" style="color:#000">LINKING CORE...</div></div><div class="status" id="status" style="margin-top:20px;font-weight:bold;">STANDBY</div><script>const socket = io(); const qrImg = document.getElementById('qr-img'); const loader = document.getElementById('loader'); const status = document.getElementById('status'); socket.on('qr', (url) => { qrImg.src = url; qrImg.style.display = 'block'; loader.style.display = 'none'; status.innerText = 'SCAN TO ACTIVATE'; }); socket.on('connected', () => { qrImg.style.display = 'none'; loader.innerText = 'VEX ONLINE ✅'; loader.style.display = 'block'; status.innerText = 'SYSTEM SYNCED'; status.style.color = '#00ff00'; });</script></body></html>`);
 });
