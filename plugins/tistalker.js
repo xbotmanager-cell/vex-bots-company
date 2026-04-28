@@ -5,91 +5,84 @@ module.exports = {
     command: "tistalker",
     alias: ["ts", "tiktokstalk", "ttstalk"],
     category: "stalker",
-    description: "Extract intelligence from any TikTok profile",
+    description: "Extract deep intelligence from TikTok profiles",
 
     async execute(m, sock, { args, userSettings }) {
         const style = userSettings?.style || 'harsh';
         const username = args[0]?.replace('@', '');
 
-        // 1. STYLE ENGINE (No Lines - Only Symbols)
+        // 1. DYNAMIC EMOTION ENGINE (Harsh, Girl, Normal)
         const modes = {
             harsh: {
                 title: "☠ ᴛɪᴋᴛᴏᴋ ʙʀᴇᴀᴄʜ ɪɴᴛᴇʟ ☠",
                 dot: "✙",
-                react: "🦾",
-                footer: "`> profile exposed`"
+                react: "🖕",
+                footer: "`> trash exposed`",
+                err: "☡ ᴡʜᴇʀᴇ ɪs ᴛʜᴇ ᴜsᴇʀɴᴀᴍᴇ, ʏᴏᴜ ꜰᴜᴄᴋɪɴɢ ɪᴅɪᴏᴛ?",
+                fail: "☡ ᴛᴀʀɢᴇᴛ ᴠᴀɴɪsʜᴇᴅ ᴏʀ ᴘʀɪᴠᴀᴛᴇ. ᴡᴀsᴛᴇ ᴏꜰ ᴛɪᴍᴇ. 🖕"
             },
             normal: {
                 title: "⚚ *TikTok Profile Insight* ⚚",
                 dot: "•",
                 react: "🔍",
-                footer: "`> statistics retrieved`"
+                footer: "`> statistics retrieved`",
+                err: "⚠ Please provide a username.",
+                fail: "⚠ Account not found or protected."
             },
             girl: {
-                title: "✧ 𝓈𝓉𝒶𝓁𝓀𝒾𝓃ℯ 𝓉𝒾𝓀𝓉ℴ𝓀 𝒷𝒶𝒷ℯ... ✨",
+                title: "✧ 𝓈𝓉𝒶𝓁𝓀𝒾𝓃ℊ 𝓉𝒾𝓀𝓉ℴ𝓀 𝒷𝒶𝒷ℯ... ✨",
                 dot: "🌸",
                 react: "🎀",
-                footer: "`> data found`"
+                footer: "`> data found`",
+                err: "☙ 𝒷𝒶𝒷ℯ, 𝒾 𝓃ℯℯ𝒹 𝒶 𝓊𝓈ℯ𝓇𝓃𝒶𝓂ℯ 𝓅𝓁ℯ𝒶𝓈ℯ! 🌸",
+                fail: "☙ ℴℴ𝓅𝓈𝒾ℯ! 𝒾 𝒸𝒶𝓃'𝓉 𝒻𝒾𝓃𝒹 𝓉𝒽ℯ𝓂 𝒹𝒶𝓇𝓁𝒾𝓃ℊ... ✨"
             }
         };
 
         const current = modes[style] || modes.normal;
-        if (!username) return m.reply(`${current.dot} ᴘʟᴇᴀsᴇ ᴘʀᴏᴠɪᴅᴇ ᴀ ᴜsᴇʀɴᴀᴍᴇ.`);
+        if (!username) return m.reply(current.err);
 
         try {
             await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
 
-            // 2. SCRAPING ENGINE (Axios + Cheerio)
+            // 2. VEX CORE ENGINE (Scraping)
             const { data } = await axios.get(`https://www.tiktok.com/@${username}`, {
-                headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+                headers: { 
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" 
+                }
             });
-            const $ = cheerio.cload(data);
+            const $ = cheerio.load(data);
             
-            // Extracting JSON Data from TikTok Script tags (Safe Method)
-            const jsonStr = $('#__UNIVERSAL_DATA_FOR_REHYDRATION__').text();
-            const res = JSON.parse(jsonStr || '{}');
-            const user = res?.__DEFAULT_SCOPE__?.['webapp.user-detail']?.userInfo;
+            // Pro-Level Data Extraction
+            const scriptData = $('#__UNIVERSAL_DATA_FOR_REHYDRATION__').html();
+            if (!scriptData) throw new Error("NoData");
 
-            // 3. DATA HARVESTING (Fail-Safe)
-            const profileData = {
-                nick: user?.user?.nickname || "Unknown",
-                bio: user?.user?.signature || "No Bio",
-                followers: user?.stats?.followerCount || 0,
-                following: user?.stats?.followingCount || 0,
-                likes: user?.stats?.heartCount || 0,
-                videos: user?.stats?.videoCount || 0,
-                verified: user?.user?.verified ? "✅ Verified" : "❌ Standard",
-                avatar: user?.user?.avatarLarger || null
-            };
+            const jsonData = JSON.parse(scriptData).__DEFAULT_SCOPE__['webapp.user-detail'];
+            const userInfo = jsonData.userInfo.user;
+            const userStats = jsonData.userInfo.stats;
 
-            // 4. CONSTRUCTING REPORT
+            // 3. CONSTRUCTING REPORT
             let report = `${current.title}\n\n`;
-            report += `${current.dot} **Nickname:** ${profileData.nick}\n`;
-            report += `${current.dot} **Status:** ${profileData.verified}\n`;
-            report += `${current.dot} **Bio:** ${profileData.bio}\n`;
-            report += `${current.dot} **Followers:** ${profileData.followers.toLocaleString()}\n`;
-            report += `${current.dot} **Following:** ${profileData.following.toLocaleString()}\n`;
-            report += `${current.dot} **Hearts:** ${profileData.likes.toLocaleString()}\n`;
-            report += `${current.dot} **Total Videos:** ${profileData.videos}\n`;
+            report += `${current.dot} **Name:** ${userInfo.nickname}\n`;
+            report += `${current.dot} **Status:** ${userInfo.verified ? "Verified ✅" : "Standard ✖"}\n`;
+            report += `${current.dot} **Privacy:** ${userInfo.privateAccount ? "Locked 🔐" : "Open 🔓"}\n`;
+            report += `${current.dot} **Bio:** ${userInfo.signature || "Empty"}\n`;
+            report += `${current.dot} **Followers:** ${userStats.followerCount.toLocaleString()}\n`;
+            report += `${current.dot} **Following:** ${userStats.followingCount.toLocaleString()}\n`;
+            report += `${current.dot} **Hearts:** ${userStats.heartCount.toLocaleString()}\n`;
+            report += `${current.dot} **Videos:** ${userStats.videoCount}\n`;
             report += `${current.dot} **Link:** tiktok.com/@${username}\n\n`;
             report += `${current.footer}`;
 
-            // 5. DELIVERY
-            if (profileData.avatar) {
-                await sock.sendMessage(m.chat, { 
-                    image: { url: profileData.avatar }, 
-                    caption: report 
-                }, { quoted: m });
-            } else {
-                await sock.sendMessage(m.chat, { text: report }, { quoted: m });
-            }
+            // 4. DELIVERY
+            await sock.sendMessage(m.chat, { 
+                image: { url: userInfo.avatarLarger }, 
+                caption: report 
+            }, { quoted: m });
 
         } catch (error) {
             console.error("TikTok Stalk Error:", error);
-            // Minimalist Error Feedback
-            await sock.sendMessage(m.chat, { 
-                text: `☡ *INTEL ERROR:* Account may be private or deleted.\n\n${current.footer}` 
-            });
+            await sock.sendMessage(m.chat, { text: current.fail });
         }
     }
 };
