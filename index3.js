@@ -133,7 +133,7 @@ async function startVex() {
     // --- MESSAGE HANDLER (ANTI-LOOP) ---
     sock.ev.on('messages.upsert', async (chatUpdate) => {
         const m = chatUpdate.messages[0];
-        if (!m.message || m.key.fromMe) return;
+        if (!m.message) return;
 
         // ANTI-LOOP: Mark as Read immediately
         await sock.readMessages([m.key]);
