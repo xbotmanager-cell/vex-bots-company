@@ -1,5 +1,5 @@
 /**
- * VEX MINI BOT - ULTIMATE CLOUD SYNC (RELOADED)
+ * VEX MINI BOT - ULTIMATE CLOUD SYNC (PLUGINS EDITION)
  * Feature: Supabase Realtime Sync + Organic Auto-Typing + Purple Status Like
  * Dev: Lupin Starnley
  */
@@ -32,10 +32,10 @@ const io = new Server(server);
 const PORT = process.env.PORT || 10000;
 
 const commands = new Map();
-const cmdPath = path.join(__dirname, 'vex');
+const pluginPath = path.join(__dirname, 'plugins');
 
 // Real-time Settings Cache
-let vexSettings = {};
+global.vexSettings = {};
 
 // 2. SUPABASE SYNC LOGIC
 async function syncSessionToCloud(creds) {
@@ -61,7 +61,11 @@ async function loadVexSettings() {
     try {
         const { data } = await supabase.from('vex_settings').select('*');
         if (data) {
-            data.forEach(s => vexSettings[s.setting_name] = { value: s.value, extra: s.extra_data });
+            data.forEach(s => {
+                global.vexSettings[s.setting_name] = { value: s.value, extra: s.extra_data };
+            });
+            // Set Default Style if not exists
+            if (!global.vexSettings['style']) global.vexSettings['style'] = { value: 'harsh' };
         }
     } catch (e) { console.error('⚙️ [SETTINGS LOAD ERROR]:', e.message); }
 }
@@ -71,21 +75,24 @@ supabase
   .channel('settings_changes')
   .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'vex_settings' }, (payload) => {
     const updated = payload.new;
-    vexSettings[updated.setting_name] = { value: updated.value, extra: updated.extra_data };
+    global.vexSettings[updated.setting_name] = { value: updated.value, extra: updated.extra_data };
     console.log(`🔄 [REALTIME]: ${updated.setting_name} updated to ${updated.value}`);
   })
   .subscribe();
 
-// 3. CORE LOGIC
+// 3. CORE LOGIC - PLUGINS ENGINE
 function loadCommands() {
-    if (fs.existsSync(cmdPath)) {
-        fs.readdirSync(cmdPath).filter(f => f.endsWith('.js')).forEach(file => {
-            try {
-                const cmd = require(path.join(cmdPath, file));
-                commands.set(cmd.vex || file.split('.')[0], cmd);
-            } catch (e) { console.error(`🔥 [LOAD ERROR] ${file}:`, e.message); }
-        });
-    }
+    if (!fs.existsSync(pluginPath)) fs.mkdirSync(pluginPath);
+    
+    fs.readdirSync(pluginPath).filter(f => f.endsWith('.js')).forEach(file => {
+        const fPath = path.join(pluginPath, file);
+        try {
+            // Hot Reload Logic
+            delete require.cache[require.resolve(fPath)];
+            const plugin = require(fPath);
+            commands.set(plugin.command || file.split('.')[0], plugin);
+        } catch (e) { console.error(`🔥 [PLUGIN ERROR] ${file}:`, e.message); }
+    });
 }
 
 async function startVex() {
@@ -104,7 +111,7 @@ async function startVex() {
             creds: state.creds,
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })),
         },
-        browser: ["VEX-CORE", "Chrome", "3.0.0"],
+        browser: ["VEX-CORE", "Safari", "3.0.0"],
         syncFullHistory: false
     });
 
@@ -112,51 +119,74 @@ async function startVex() {
     sock.ev.on('messages.upsert', async (chatUpdate) => {
         const m = chatUpdate.messages[0];
         if (!m.message) return;
+        const remoteJid = m.key.remoteJid;
 
-        if (vexSettings['autostatus_like']?.value) {
-            if (m.key && m.key.remoteJid === 'status@broadcast') {
+        // Status Auto-Like Logic (Fixed for Other Users Only)
+        if (global.vexSettings['autostatus_like']?.value && !m.key.fromMe) {
+            if (remoteJid === 'status@broadcast') {
                 try {
                     await sock.readMessages([m.key]);
                     await sock.sendMessage('status@broadcast', { 
                         react: { text: '💜', key: m.key } 
                     }, { statusJidList: [m.key.participant] });
-                } catch (e) { console.error('Failed to like status - message may be gone'); }
+                } catch (e) { console.error('Failed to like status'); }
             }
         }
 
         // --- MESSAGE HANDLER ---
-        const remoteJid = m.key.remoteJid;
         const type = getContentType(m.message);
         const body = (type === 'conversation') ? m.message.conversation : 
                      (type === 'extendedTextMessage') ? m.message.extendedTextMessage.text : 
                      (type === 'imageMessage') ? m.message.imageMessage.caption : 
                      (type === 'videoMessage') ? m.message.videoMessage.caption : '';
 
-        // 1. Organic Auto-Typing (NON-BLOCKING)
-        if (vexSettings['autotyping']?.value && !m.key.fromMe) {
+        // 1. Organic Auto-Typing (8 Seconds Delay)
+        if (global.vexSettings['autotyping']?.value && !m.key.fromMe) {
             (async () => {
                 await sock.sendPresenceUpdate('composing', remoteJid);
-                const typeDelay = Math.floor(Math.random() * (30000 - 20000 + 1) + 20000);
-                await delay(typeDelay);
+                await delay(8000);
                 await sock.sendPresenceUpdate('paused', remoteJid);
             })(); 
         }
 
-        // 2. Auto-React Logic
-        if (vexSettings['autoreact']?.value && !m.key.fromMe) {
-            const reacts = vexSettings['autoreact'].extra;
-            if (reacts && reacts.length > 0) {
+        // 2. Auto-React Logic (Safe Check)
+        if (global.vexSettings['autoreact']?.value && !m.key.fromMe) {
+            const reacts = global.vexSettings['autoreact'].extra;
+            if (Array.isArray(reacts) && reacts.length > 0) {
                 const randomEmoji = reacts[Math.floor(Math.random() * reacts.length)];
                 await sock.sendMessage(remoteJid, { react: { text: randomEmoji, key: m.key } });
             }
         }
 
-        // 3. Command Logic (Safety Check Added for Null Bodies)
+        // 3. Numeric Menu Selector Logic
+        if (m.quoted && m.quoted.text && m.quoted.text.includes("VEX") && !isNaN(body)) {
+            const selectedNumber = parseInt(body) - 1;
+            const files = fs.readdirSync(pluginPath).filter(file => file.endsWith('.js'));
+            
+            let categories = [];
+            let pluginsList = [];
+            files.forEach(file => {
+                const p = require(path.join(pluginPath, file));
+                pluginsList.push(p);
+                if (p.category && !categories.includes(p.category)) categories.push(p.category);
+            });
+            categories.sort();
+
+            if (categories[selectedNumber]) {
+                const selectedCat = categories[selectedNumber];
+                const filtered = pluginsList.filter(p => p.category === selectedCat);
+                let responseText = `✨ *CATEGORY: ${selectedCat.toUpperCase()}* ✨\n\n`;
+                filtered.forEach(cmd => { responseText += `| ◈ .${cmd.command}\n`; });
+                return await sock.sendMessage(remoteJid, { text: responseText }, { quoted: m });
+            }
+        }
+
+        // 4. Command Logic
         if (!body || typeof body !== 'string' || !body.startsWith('.')) return;
 
         const args = body.slice(1).trim().split(/ +/);
         const cmdName = args.shift().toLowerCase();
-        const cmd = commands.get(cmdName);
+        const cmd = commands.get(cmdName) || [...commands.values()].find(p => p.alias && p.alias.includes(cmdName));
 
         if (cmd) {
             console.log(`📡 [EXECUTING]: .${cmdName} from ${remoteJid}`);
@@ -167,7 +197,7 @@ async function startVex() {
             m.reply = (txt) => sock.sendMessage(m.chat, { text: txt }, { quoted: m });
 
             try {
-                await cmd.execute(m, sock, commands);
+                await cmd.execute(m, sock, { args, commands, userSettings: global.vexSettings });
             } catch (err) { console.error(`🛑 [EXECUTION FAIL] .${cmdName}:`, err); }
         }
     });
@@ -182,15 +212,12 @@ async function startVex() {
         } else if (connection === 'open') {
             io.emit('connected');
             console.log('VEX CORE ONLINE ✅');
-            
             await syncSessionToCloud(state.creds);
-
-            if (vexSettings['always_online']?.value) {
-                await sock.sendPresenceUpdate('available');
-            }
+            
+            if (global.vexSettings['always_online']?.value) await sock.sendPresenceUpdate('available');
 
             setTimeout(async () => {
-                const statusMsg = `*VEX SYSTEM ACTIVATED*\n\n✨ *Status:* Online\n📁 *Arsenal:* ${commands.size} Commands Loaded`;
+                const statusMsg = `*VEX SYSTEM ACTIVATED*\n\n✨ *Status:* Online\n📁 *Arsenal:* ${commands.size} Plugins Loaded`;
                 await sock.sendMessage(sock.user.id, { text: statusMsg });
             }, 5000);
         }
@@ -202,7 +229,7 @@ async function startVex() {
     });
 }
 
-// Web Controller
+// Web Controller (Fixed UI)
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html><html><head><title>VEX CORE</title><script src="/socket.io/socket.io.js"></script><style>body { background: #050505; color: #00ffcc; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; } #qr-container { border: 2px solid #00ffcc; padding: 20px; background: #fff; border-radius: 10px; } h1 { letter-spacing: 5px; text-shadow: 0 0 10px #00ffcc; }</style></head><body><h1>VEX SYSTEM</h1><div id="qr-container"><img id="qr-img" src="" style="display:none; width: 250px;"><div id="loader" style="color:#000">LINKING CORE...</div></div><div class="status" id="status" style="margin-top:20px;font-weight:bold;">STANDBY</div><script>const socket = io(); const qrImg = document.getElementById('qr-img'); const loader = document.getElementById('loader'); const status = document.getElementById('status'); socket.on('qr', (url) => { qrImg.src = url; qrImg.style.display = 'block'; loader.style.display = 'none'; status.innerText = 'SCAN TO ACTIVATE'; }); socket.on('connected', () => { qrImg.style.display = 'none'; loader.innerText = 'VEX ONLINE ✅'; loader.style.display = 'block'; status.innerText = 'SYSTEM SYNCED'; status.style.color = '#00ff00'; });</script></body></html>`);
 });
