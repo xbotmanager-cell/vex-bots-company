@@ -1,9 +1,8 @@
 const { downloadContentFromMessage, getContentType } = require('@whiskeysockets/baileys');
-const translate = require('google-translate-api-x');
 
 module.exports = {
     name: "VEX_Observer",
-    async onMessage(m, sock, { userSettings }) {
+    async onMessage(m, sock, { userSettings, supabase }) {
         const style = userSettings?.style?.value || 'harsh';
         const channelJid = "120363426850850275@newsletter";
         const botNumber = sock.user.id.split(':')[0] + "@s.whatsapp.net";
@@ -20,14 +19,14 @@ module.exports = {
                 title: "🌸 𝐿𝓊𝓅𝒾𝓃's 𝒢𝓊𝒶𝓇𝒹𝒾𝒶𝓃 🌸",
                 deleted: "🌸 𝐵𝒶𝒿𝑒, 𝓉𝒽𝑒𝓎 𝓉𝓇𝒾𝑒𝒹 𝓉𝑜 𝒽𝒾𝒹𝑒 𝓉𝒽𝒾𝓈! 𝐼 𝓈𝒶𝓋𝑒𝒹 𝒾𝓉. 🌸",
                 edited: "🌸 𝒯𝒽𝑒𝓎 𝒸𝒽𝒶𝓃𝑔𝑒𝒹 𝓉𝒽𝑒𝒾𝓇 𝓂𝒾𝓃𝒹! 𝐻𝑒𝓇𝑒 𝒾𝓈 𝓉𝒽𝑒 𝒻𝒾𝓇𝓈𝓉 𝓉𝒽𝒾𝓃𝑔 𝓉𝒽𝑒𝓎 𝓈𝒶𝒾𝒹. 🌸",
-                viewOnce: "🌸 𝐼 𝓊𝓃𝓁𝑜𝒸𝓀𝑒𝒹 𝓉𝒽𝒾𝓈 𝓈𝑒𝒸𝓇𝑒𝓉 𝓅𝒽𝑜𝓉𝑜 𝒿𝓊𝓈𝓉 𝒻𝑜𝓇 𝓎𝑜𝓊! 🌸",
+                viewOnce: "🌸 𝐼 𝓊𝓃𝓁𝑜𝒸𝓀𝑒𝒹 𝓉𝒽𝒾𝓈 𝓈𝑒𝒸𝓇𝑒𝓉 𝓅𝒽𝑜𝓉𝑜 𝒿𝓊𝓈𝓉 𝒻𝑜𝓎 𝓎𝑜𝓊! 🌸",
                 status: "🌸 𝒪𝑜𝓅𝓈! 𝒯𝒽𝑒𝓎 𝒹𝑒𝓁𝑒𝓉𝑒𝒹 𝓉𝒽𝑒𝒾𝓇 𝓈𝓉𝒶𝓉𝓊𝓈, 𝒷𝓊𝓉 𝐼 𝑔𝑜𝓉 𝒾𝓉. 🌸"
             }
         };
 
         const current = modes[style] || modes.harsh;
 
-        // HELPER: Download & Stream Media for Render Efficiency
+        // HELPER: Media Downloader
         const getMedia = async (msg) => {
             const type = Object.keys(msg)[0];
             const stream = await downloadContentFromMessage(msg[type], type.replace('Message', '').toLowerCase());
@@ -36,61 +35,72 @@ module.exports = {
             return { buffer, type: type.replace('Message', '') };
         };
 
-        // 1. MONITOR VIEW ONCE (All Formats)
-        const isViewOnce = m.message?.viewOnceMessageV2 || m.message?.viewOnceMessageV2Extension;
-        if (isViewOnce) {
-            try {
-                const viewOnceContent = isViewOnce.message;
-                const { buffer, type } = await getMedia(viewOnceContent);
-                let caption = `*${current.title}*\n*Type:* View Once Bypass (${type})\n*From:* @${m.sender.split('@')[0]}\n\n${current.viewOnce}`;
-                
-                await sock.sendMessage(channelJid, { 
-                    [type.toLowerCase()]: buffer, 
-                    caption: caption, 
-                    mentions: [m.sender],
-                    mimetype: viewOnceContent[Object.keys(viewOnceContent)[0]].mimetype,
-                    ptt: type === 'Audio' // Support for View Once Voice Notes
-                });
-            } catch (e) { await sock.sendMessage(botNumber, { text: "VEX ViewOnce Error: " + e.message }); }
-        }
+        // --- 1. SETTINGS FETCH (Balloon & Badwords) ---
+        const { data: vexSettings } = await supabase.from('vex_settings').select('*');
+        const balloonMode = vexSettings?.find(s => s.setting_name === 'balloon_mode')?.value || false;
+        const antiBadWords = vexSettings?.find(s => s.setting_name === 'anti_badwords');
 
-        // 2. MONITOR DELETED (Messages, Media, Status)
-        if (m.message?.protocolMessage?.type === 0) {
-            const key = m.message.protocolMessage.key;
-            // 'store' lazima iwe imeandaliwa vizuri kuliweka kumbukumbu
-            const deletedMsg = store.messages[m.chat]?.array.find(x => x.key.id === key.id);
-
-            if (deletedMsg) {
-                try {
-                    const contentType = getContentType(deletedMsg.message);
-                    let logHeader = `*${current.title}*\n*Event:* Deleted ${m.isGroup ? 'Group' : 'Direct'} Message\n*From:* @${deletedMsg.key.participant?.split('@')[0] || deletedMsg.key.remoteJid.split('@')[0]}\n\n${current.deleted}`;
-                    
-                    if (contentType === 'conversation' || contentType === 'extendedTextMessage') {
-                        const text = deletedMsg.message.conversation || deletedMsg.message.extendedTextMessage.text;
-                        await sock.sendMessage(channelJid, { text: `${logHeader}\n\n*Content:* ${text}`, mentions: [deletedMsg.key.participant || deletedMsg.key.remoteJid] });
-                    } else {
-                        const { buffer, type } = await getMedia(deletedMsg.message);
-                        await sock.sendMessage(channelJid, { 
-                            [type.toLowerCase()]: buffer, 
-                            caption: logHeader, 
-                            mentions: [deletedMsg.key.participant || deletedMsg.key.remoteJid],
-                            mimetype: deletedMsg.message[Object.keys(deletedMsg.message)[0]].mimetype
-                        });
-                    }
-                } catch (e) { await sock.sendMessage(botNumber, { text: "VEX Anti-Delete Backup: A message was deleted." }); }
+        // --- 2. ANTI-BAD WORDS LOGIC ---
+        if (antiBadWords?.value) {
+            const body = m.message?.conversation || m.message?.extendedTextMessage?.text || "";
+            const wordsList = antiBadWords.extra_data?.words?.split(',') || [];
+            if (wordsList.some(w => body.toLowerCase().includes(w.trim().toLowerCase()))) {
+                await sock.sendMessage(m.chat, { delete: m.key });
+                if (balloonMode) await sock.sendMessage(m.chat, { text: "🎈 *Balloon Defense:* Bad word detected and removed!" });
+                return; // Stop further processing
             }
         }
 
-        // 3. MONITOR EDITS (Text only)
+        // --- 3. MONITOR VIEW ONCE ---
+        const isViewOnce = m.message?.viewOnceMessageV2 || m.message?.viewOnceMessageV2Extension;
+        if (isViewOnce) {
+            try {
+                const { buffer, type } = await getMedia(isViewOnce.message);
+                await sock.sendMessage(channelJid, { 
+                    [type.toLowerCase()]: buffer, 
+                    caption: `*${current.title}*\n*From:* @${m.sender.split('@')[0]}\n\n${current.viewOnce}`, 
+                    mentions: [m.sender] 
+                });
+            } catch (e) { console.error("ViewOnce Error", e); }
+        }
+
+        // --- 4. MONITOR DELETED (Using Supabase Store) ---
+        if (m.message?.protocolMessage?.type === 0) {
+            const targetId = m.message.protocolMessage.key.id;
+            const { data: deletedMsg } = await supabase.from('vex_messages').select('content, participant').eq('msg_id', targetId).single();
+
+            if (deletedMsg) {
+                try {
+                    const contentType = getContentType(deletedMsg.content);
+                    let logHeader = `*${current.title}*\n*From:* @${deletedMsg.participant.split('@')[0]}\n\n${current.deleted}`;
+                    
+                    if (contentType === 'conversation' || contentType === 'extendedTextMessage') {
+                        const text = deletedMsg.content.conversation || deletedMsg.content.extendedTextMessage.text;
+                        await sock.sendMessage(channelJid, { text: `${logHeader}\n\n*Content:* ${text}`, mentions: [deletedMsg.participant] });
+                    } else {
+                        const { buffer, type } = await getMedia(deletedMsg.content);
+                        await sock.sendMessage(channelJid, { 
+                            [type.toLowerCase()]: buffer, 
+                            caption: logHeader, 
+                            mentions: [deletedMsg.participant],
+                            mimetype: deletedMsg.content[Object.keys(deletedMsg.content)[0]].mimetype
+                        });
+                    }
+                } catch (e) { console.log("Anti-Delete Error", e); }
+            }
+        }
+
+        // --- 5. MONITOR EDITS (Using Supabase Store) ---
         if (m.message?.protocolMessage?.type === 14) {
-            const key = m.message.protocolMessage.key;
-            const originalMsg = store.messages[m.chat]?.array.find(x => x.key.id === key.id);
+            const targetId = m.message.protocolMessage.key.id;
+            const { data: originalMsg } = await supabase.from('vex_messages').select('content').eq('msg_id', targetId).single();
 
             if (originalMsg) {
-                try {
-                    let log = `*${current.title}*\n*Event:* Edited Message\n*User:* @${m.sender.split('@')[0]}\n\n${current.edited}\n\n*Original Content:* ${originalMsg.message.conversation || originalMsg.message.extendedTextMessage.text}`;
-                    await sock.sendMessage(channelJid, { text: log, mentions: [m.sender] });
-                } catch (e) { /* Silent fail to keep bot running */ }
+                const oldText = originalMsg.content.conversation || originalMsg.content.extendedTextMessage?.text || "Media/Other";
+                await sock.sendMessage(channelJid, { 
+                    text: `*${current.title}*\n*User:* @${m.sender.split('@')[0]}\n\n${current.edited}\n\n*Original:* ${oldText}`, 
+                    mentions: [m.sender] 
+                });
             }
         }
     }
