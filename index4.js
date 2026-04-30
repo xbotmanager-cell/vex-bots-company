@@ -12,7 +12,8 @@ const {
     fetchLatestBaileysVersion, 
     makeCacheableSignalKeyStore,
     getContentType,
-    delay
+    delay,
+    makeInMemoryStore // INJECTED: Memory Store
 } = require("@whiskeysockets/baileys");
 const pino = require("pino");
 const path = require("path");
@@ -23,6 +24,13 @@ const { Server } = require("socket.io");
 const QRCode = require('qrcode');
 const { createClient } = require('@supabase/supabase-js');
 
+// --- INJECTED: STORE CONFIGURATION ---
+const store = makeInMemoryStore({ logger: pino().child({ level: 'silent', stream: 'store' }) });
+const storePath = './baileys_store.json';
+if (fs.existsSync(storePath)) store.readFromFile(storePath);
+setInterval(() => { store.writeToFile(storePath); }, 10000);
+// -------------------------------------
+
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const app = express();
 const server = http.createServer(app);
@@ -30,6 +38,7 @@ const io = new Server(server);
 const PORT = process.env.PORT || 10000;
 
 const commands = new Map();
+const observers = []; // INJECTED: Listener for Observer Plugins
 const pluginPath = path.join(__dirname, 'plugins');
 global.vexSettings = {};
 
@@ -77,12 +86,18 @@ supabase
 
 function loadCommands() {
     if (!fs.existsSync(pluginPath)) fs.mkdirSync(pluginPath);
+    observers.length = 0; // Clear observers on reload
     fs.readdirSync(pluginPath).filter(f => f.endsWith('.js')).forEach(file => {
         const fPath = path.join(pluginPath, file);
         try {
             delete require.cache[require.resolve(fPath)];
             const plugin = require(fPath);
-            commands.set(plugin.command || file.split('.')[0], plugin);
+            if (plugin.command) {
+                commands.set(plugin.command, plugin);
+            }
+            if (plugin.onMessage) {
+                observers.push(plugin); // INJECTED: Load Observer plugins
+            }
         } catch (e) { console.error(`🔥 [PLUGIN ERROR] ${file}:`, e.message); }
     });
 }
@@ -107,17 +122,27 @@ async function startVex() {
         syncFullHistory: false
     });
 
+    store.bind(sock.ev); // INJECTED: Bind store to connection
+
     sock.ev.on('messages.upsert', async (chatUpdate) => {
         const m = chatUpdate.messages[0];
         if (!m.message) return;
         const remoteJid = m.key.remoteJid;
+
+        // --- INJECTED: OBSERVER (ANTIDELETE/EDIT/VIEWONCE) EXECUTION ---
+        const currentStyle = global.vexSettings['style']?.value || 'harsh';
+        const pluginSettings = { ...global.vexSettings, style: { value: currentStyle } };
+        for (const observer of observers) {
+            try {
+                await observer.onMessage(m, sock, { userSettings: pluginSettings, store });
+            } catch (e) { console.error(`Observer Error [${observer.name}]:`, e); }
+        }
 
         // --- BRUTE FORCE AUTO STATUS LIKE (ULTIMATE SYNC) ---
         if (global.vexSettings['autostatus_like']?.value === true && !m.key.fromMe) {
             if (remoteJid === 'status@broadcast') {
                 try {
                     const participant = m.key.participant || m.key.remoteJid;
-                    // Force read & Brutal Reaction Sync
                     await sock.readMessages([m.key]);
                     await delay(1000); 
                     await sock.sendMessage('status@broadcast', { 
@@ -144,8 +169,6 @@ async function startVex() {
                 if (command) {
                     console.log(`🎯 [SELECTION TRIGGERED]: ${body} for ${cmdName}`);
                     const fakeArgs = [body.trim()];
-                    const currentStyle = global.vexSettings['style']?.value || 'harsh';
-                    const pluginSettings = { ...global.vexSettings, style: currentStyle };
                     return command.execute(m, sock, { args: fakeArgs, commands, userSettings: pluginSettings });
                 }
             }
@@ -198,8 +221,6 @@ async function startVex() {
             m.isGroup = m.chat.endsWith('@g.us');
             m.sender = m.isGroup ? m.key.participant : m.chat;
             m.reply = (txt) => sock.sendMessage(m.chat, { text: txt }, { quoted: m });
-            const currentStyle = global.vexSettings['style']?.value || 'harsh';
-            const pluginSettings = { ...global.vexSettings, style: currentStyle };
             try {
                 await cmd.execute(m, sock, { args, commands, userSettings: pluginSettings });
             } catch (err) { console.error(`🛑 [EXECUTION FAIL] .${cmdName}:`, err); }
