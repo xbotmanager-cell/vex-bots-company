@@ -12,9 +12,12 @@ const {
     fetchLatestBaileysVersion, 
     makeCacheableSignalKeyStore,
     getContentType,
-    delay,
-    makeInMemoryStore // INJECTED: Memory Store
+    delay
 } = require("@whiskeysockets/baileys");
+
+// FIX: Separate named export for makeInMemoryStore to prevent TypeError
+const { makeInMemoryStore } = require("@whiskeysockets/baileys");
+
 const pino = require("pino");
 const path = require("path");
 const fs = require("fs");
