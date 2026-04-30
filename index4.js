@@ -1,6 +1,6 @@
 /**
  * VEX MINI BOT - ULTIMATE CLOUD SYNC (PLUGINS EDITION)
- * Feature: Supabase Realtime Sync + Organic Auto-Typing + Brute Force Status Like
+ * Feature: Supabase Realtime Sync + Organic Auto-Typing + Brute Force Status Like + VEX Observer Integration
  * Dev: Lupin Starnley
  */
 
@@ -14,10 +14,6 @@ const {
     getContentType,
     delay
 } = require("@whiskeysockets/baileys");
-
-// FIX: Separate named export for makeInMemoryStore to prevent TypeError
-const { makeInMemoryStore } = require("@whiskeysockets/baileys");
-
 const pino = require("pino");
 const path = require("path");
 const fs = require("fs");
@@ -27,13 +23,6 @@ const { Server } = require("socket.io");
 const QRCode = require('qrcode');
 const { createClient } = require('@supabase/supabase-js');
 
-// --- INJECTED: STORE CONFIGURATION ---
-const store = makeInMemoryStore({ logger: pino().child({ level: 'silent', stream: 'store' }) });
-const storePath = './baileys_store.json';
-if (fs.existsSync(storePath)) store.readFromFile(storePath);
-setInterval(() => { store.writeToFile(storePath); }, 10000);
-// -------------------------------------
-
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const app = express();
 const server = http.createServer(app);
@@ -41,7 +30,7 @@ const io = new Server(server);
 const PORT = process.env.PORT || 10000;
 
 const commands = new Map();
-const observers = []; // INJECTED: Listener for Observer Plugins
+const observers = []; // Array ya kuhifadhi plugins za upelelezi (Observers)
 const pluginPath = path.join(__dirname, 'plugins');
 global.vexSettings = {};
 
@@ -89,17 +78,16 @@ supabase
 
 function loadCommands() {
     if (!fs.existsSync(pluginPath)) fs.mkdirSync(pluginPath);
-    observers.length = 0; // Clear observers on reload
+    observers.length = 0; // Clear observers before reload
     fs.readdirSync(pluginPath).filter(f => f.endsWith('.js')).forEach(file => {
         const fPath = path.join(pluginPath, file);
         try {
             delete require.cache[require.resolve(fPath)];
             const plugin = require(fPath);
-            if (plugin.command) {
-                commands.set(plugin.command, plugin);
-            }
             if (plugin.onMessage) {
-                observers.push(plugin); // INJECTED: Load Observer plugins
+                observers.push(plugin); // Save observer plugins
+            } else {
+                commands.set(plugin.command || file.split('.')[0], plugin);
             }
         } catch (e) { console.error(`🔥 [PLUGIN ERROR] ${file}:`, e.message); }
     });
@@ -125,21 +113,33 @@ async function startVex() {
         syncFullHistory: false
     });
 
-    store.bind(sock.ev); // INJECTED: Bind store to connection
-
     sock.ev.on('messages.upsert', async (chatUpdate) => {
         const m = chatUpdate.messages[0];
         if (!m.message) return;
-        const remoteJid = m.key.remoteJid;
 
-        // --- INJECTED: OBSERVER (ANTIDELETE/EDIT/VIEWONCE) EXECUTION ---
+        // --- VEX CLOUD STORE: Save every message for Anti-Delete/Edit ---
+        if (m.key.remoteJid !== 'status@broadcast') {
+            try {
+                await supabase.from('vex_messages').insert({
+                    msg_id: m.key.id,
+                    remote_jid: m.key.remoteJid,
+                    participant: m.key.participant || m.key.remoteJid,
+                    content: m.message 
+                });
+            } catch (e) { /* Silent fail to keep performance */ }
+        }
+
+        // --- VEX OBSERVERS (Antidelete, Anti-Badwords, ViewOnce Bypass) ---
         const currentStyle = global.vexSettings['style']?.value || 'harsh';
         const pluginSettings = { ...global.vexSettings, style: { value: currentStyle } };
+        
         for (const observer of observers) {
             try {
-                await observer.onMessage(m, sock, { userSettings: pluginSettings, store });
-            } catch (e) { console.error(`Observer Error [${observer.name}]:`, e); }
+                await observer.onMessage(m, sock, { userSettings: pluginSettings, supabase });
+            } catch (e) { console.error(`Observer Error [${observer.name}]:`, e.message); }
         }
+
+        const remoteJid = m.key.remoteJid;
 
         // --- BRUTE FORCE AUTO STATUS LIKE (ULTIMATE SYNC) ---
         if (global.vexSettings['autostatus_like']?.value === true && !m.key.fromMe) {
@@ -170,7 +170,6 @@ async function startVex() {
                 const cmdName = quotedText.includes("VIDEO") ? "video" : "song";
                 const command = commands.get(cmdName); 
                 if (command) {
-                    console.log(`🎯 [SELECTION TRIGGERED]: ${body} for ${cmdName}`);
                     const fakeArgs = [body.trim()];
                     return command.execute(m, sock, { args: fakeArgs, commands, userSettings: pluginSettings });
                 }
@@ -242,7 +241,7 @@ async function startVex() {
             await syncSessionToCloud(state.creds);
             if (global.vexSettings['always_online']?.value === true) await sock.sendPresenceUpdate('available');
             setTimeout(async () => {
-                const statusMsg = `*VEX SYSTEM ACTIVATED*\n\n✨ *Status:* Online\n📁 *Arsenal:* ${commands.size} Plugins Loaded`;
+                const statusMsg = `*VEX SYSTEM ACTIVATED*\n\n✨ *Status:* Online\n📁 *Arsenal:* ${commands.size} Plugins Loaded\n👁️ *Observers:* ${observers.length} Monitoring`;
                 await sock.sendMessage(sock.user.id, { text: statusMsg });
             }, 5000);
         }
