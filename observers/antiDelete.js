@@ -8,7 +8,7 @@ module.exports = {
     },
 
     // ================= EXECUTION =================
-    async execute(m, sock, ctx) {
+    async onMessage(m, sock, ctx) {
         const { cache, supabase } = ctx;
 
         const style = cache.getSetting("style") || "harsh";
