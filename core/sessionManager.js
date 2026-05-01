@@ -1,36 +1,31 @@
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore,
-    DisconnectReason
-} = require("@whiskeysockets/baileys");
-
 const fs = require("fs");
 const path = require("path");
-const pino = require("pino");
-
 const { createClient } = require("@supabase/supabase-js");
+const {
+    useMultiFileAuthState,
+    makeWASocket,
+    fetchLatestBaileysVersion,
+    DisconnectReason,
+    makeCacheableSignalKeyStore
+} = require("@whiskeysockets/baileys");
+
+const pino = require("pino");
 
 const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_KEY
 );
 
-// ================= SESSION MANAGER =================
+// ================= ACTIVE SESSIONS =================
 
-class SessionManager {
-    constructor(cache) {
-        this.cache = cache;
-        this.sessions = new Map(); // active runtime sessions
-    }
+const activeSessions = new Map();
 
-    // ================= CREATE BOT INSTANCE =================
+// ================= MAIN FUNCTION =================
 
-    async spawnSession(sessionRecord) {
-        const sessionId = sessionRecord.id;
-
-        const sessionPath = path.join(__dirname, `../sessions/${sessionId}`);
+module.exports = {
+    // ================= CREATE SESSION HANDLER =================
+    async createSession(session) {
+        const sessionPath = path.join(__dirname, "../sessions", session.id);
 
         if (!fs.existsSync(sessionPath)) {
             fs.mkdirSync(sessionPath, { recursive: true });
@@ -41,11 +36,12 @@ class SessionManager {
 
         const sock = makeWASocket({
             version,
-            logger: pino({ level: "fatal" }),
             auth: {
                 creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }))
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" }))
             },
+            logger: pino({ level: "silent" }),
+            printQRInTerminal: false,
             browser: ["VEX-SUBBOT", "Chrome", "1.0.0"]
         });
 
@@ -54,51 +50,54 @@ class SessionManager {
         sock.ev.on("connection.update", async (update) => {
             const { connection, lastDisconnect, qr } = update;
 
+            // QR GENERATION
             if (qr) {
-                console.log(`📡 QR for session ${sessionId} generated`);
-                // later: send QR to owner if needed
+                console.log(`📡 QR for session ${session.id} generated`);
             }
 
+            // CONNECTION OPENED
             if (connection === "open") {
-                console.log(`✅ SUBBOT ACTIVE: ${sessionId}`);
+                console.log(`✅ SubBot ${session.phone} ACTIVE`);
 
                 await supabase
                     .from("bot_sessions")
                     .update({
-                        status: "active"
+                        status: "active",
+                        session_data: JSON.stringify(state.creds)
                     })
-                    .eq("id", sessionId);
+                    .eq("id", session.id);
+
+                activeSessions.set(session.id, sock);
             }
 
+            // DISCONNECT HANDLER
             if (connection === "close") {
-                const shouldReconnect =
-                    lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                const reason = lastDisconnect?.error?.output?.statusCode;
 
-                if (shouldReconnect) {
-                    console.log(`♻️ Reconnecting session ${sessionId}`);
-                    this.spawnSession(sessionRecord);
+                if (reason !== DisconnectReason.loggedOut) {
+                    console.log(`♻️ Reconnecting session ${session.id}...`);
+                    this.createSession(session);
                 } else {
-                    console.log(`❌ Session logged out: ${sessionId}`);
+                    console.log(`❌ Session ${session.id} logged out`);
 
-                    await this.terminateSession(sessionId);
+                    await supabase
+                        .from("bot_sessions")
+                        .update({ status: "expired" })
+                        .eq("id", session.id);
+
+                    activeSessions.delete(session.id);
                 }
             }
         });
 
-        // ================= SAVE CREDS =================
+        // ================= CREDS SAVE =================
 
-        sock.ev.on("creds.update", async () => {
-            await saveCreds();
-        });
-
-        // ================= STORE IN MEMORY =================
-
-        this.sessions.set(sessionId, sock);
+        sock.ev.on("creds.update", saveCreds);
 
         return sock;
-    }
+    },
 
-    // ================= LOAD ACTIVE SESSIONS =================
+    // ================= LOAD ALL ACTIVE SESSIONS =================
 
     async loadActiveSessions() {
         const { data } = await supabase
@@ -109,20 +108,35 @@ class SessionManager {
         if (!data) return;
 
         for (const session of data) {
-            await this.spawnSession(session);
+            console.log(`🔄 Loading session ${session.id}`);
+            await this.createSession(session);
         }
+    },
+
+    // ================= GET SESSION =================
+
+    getSession(id) {
+        return activeSessions.get(id);
+    },
+
+    // ================= KILL SESSION =================
+
+    async killSession(id) {
+        const sock = activeSessions.get(id);
+
+        if (sock) {
+            try {
+                sock.logout();
+            } catch {}
+        }
+
+        activeSessions.delete(id);
+
+        await supabase
+            .from("bot_sessions")
+            .update({ status: "expired" })
+            .eq("id", id);
+
+        console.log(`🛑 Session ${id} terminated`);
     }
-
-    // ================= TERMINATE SESSION =================
-
-    async terminateSession(sessionId) {
-        try {
-            this.sessions.delete(sessionId);
-
-            const sessionPath = path.join(__dirname, `../sessions/${sessionId}`);
-
-            if (fs.existsSync(sessionPath)) {
-                fs.rmSync(sessionPath, { recursive: true, force: true });
-            }
-
-            await
+};
