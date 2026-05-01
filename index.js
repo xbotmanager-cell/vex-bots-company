@@ -23,8 +23,8 @@ const { createClient } = require("@supabase/supabase-js");
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 // CORE SYSTEMS (future-ready)
-const router = require("./core/router"); // (next step)
-const cache = require("./core/cache");   // (next step)
+const router = require("./core/router"); 
+const cache = require("./core/cache");   
 
 // PATHS
 const pluginPath = path.join(__dirname, "plugins");
@@ -43,7 +43,6 @@ const PORT = process.env.PORT || 10000;
 
 // ================= LOADERS =================
 
-// LOAD COMMANDS
 function loadCommands() {
     commands.clear();
     aliases.clear();
@@ -71,11 +70,9 @@ function loadCommands() {
             console.error(`PLUGIN LOAD ERROR [${file}]:`, e.message);
         }
     }
-
     console.log(`✅ Loaded ${commands.size} commands`);
 }
 
-// LOAD OBSERVERS
 function loadObservers() {
     observers.length = 0;
 
@@ -97,32 +94,31 @@ function loadObservers() {
             console.error(`OBSERVER LOAD ERROR [${file}]:`, e.message);
         }
     }
-
     console.log(`👁️ Loaded ${observers.length} observers`);
 }
 
-// ================= SESSION =================
+// ================= SESSION RECOVERY (LUPIN LOGIC) =================
 
 async function syncSessionToCloud(creds) {
     try {
-        const base64 = Buffer.from(JSON.stringify(creds)).toString("base64");
-        await supabase.from("vex_session").upsert({ id: "main", data: base64 });
-    } catch (e) {
-        console.error("Session Save Error:", e.message);
-    }
+        const base64Data = Buffer.from(JSON.stringify(creds)).toString('base64');
+        await supabase.from('vex_session').upsert({ id: 'v1_session', data: base64Data });
+    } catch (e) { console.error('☁️ [SUPABASE SAVE ERROR]:', e.message); }
 }
 
 async function loadSessionFromCloud() {
     try {
-        const { data } = await supabase.from("vex_session").select("data").eq("id", "main").single();
+        const { data } = await supabase.from('vex_session').select('data').eq('id', 'v1_session').single();
         if (data) {
-            const decoded = Buffer.from(data.data, "base64").toString("utf-8");
+            const decoded = Buffer.from(data.data, 'base64').toString('utf-8');
             if (!fs.existsSync("./session")) fs.mkdirSync("./session");
             fs.writeFileSync("./session/creds.json", decoded);
-            console.log("✅ Session restored from cloud");
+            console.log('✅ [VEX]: Cloud Session Restored.');
+            return true;
         }
-    } catch {
-        console.log("ℹ️ No session found");
+    } catch (e) { 
+        console.log('ℹ️ [VEX]: No cloud session found, starting fresh.'); 
+        return false;
     }
 }
 
@@ -156,8 +152,6 @@ async function startVex() {
         if (!m.message) return;
 
         const remoteJid = m.key.remoteJid;
-
-        // BASIC NORMALIZATION
         const type = getContentType(m.message);
 
         const body =
@@ -167,15 +161,12 @@ async function startVex() {
             type === "videoMessage" ? m.message.videoMessage.caption :
             "";
 
-        // SAFE MESSAGE OBJECT
         m.chat = remoteJid;
         m.sender = m.key.participant || remoteJid;
         m.isGroup = remoteJid.endsWith("@g.us");
-
         m.reply = (text) => sock.sendMessage(m.chat, { text }, { quoted: m });
 
         try {
-            // ================= ROUTER =================
             const route = await router(m, {
                 body,
                 commands,
@@ -185,35 +176,25 @@ async function startVex() {
                 supabase
             });
 
-            // ================= HANDLE RESULT =================
             if (!route) return;
 
             if (route.type === "observer") {
                 for (const obs of route.list) {
                     try {
                         await obs.onMessage(m, sock, route.context);
-                    } catch (e) {
-                        console.error(`Observer Error:`, e.message);
-                    }
+                    } catch (e) { console.error(`Observer Error:`, e.message); }
                 }
             }
 
             if (route.type === "command") {
                 const cmd = route.command;
                 if (!cmd) return;
-
                 try {
                     await cmd.execute(m, sock, route.context);
-                } catch (e) {
-                    console.error(`Command Error:`, e.message);
-                }
+                } catch (e) { console.error(`Command Error:`, e.message); }
             }
 
-            if (route.type === "ignore") return;
-
-        } catch (err) {
-            console.error("Router Failure:", err.message);
-        }
+        } catch (err) { console.error("Router Failure:", err.message); }
     });
 
     // ================= CONNECTION =================
@@ -226,7 +207,6 @@ async function startVex() {
         if (connection === "close") {
             const shouldReconnect =
                 lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-
             if (shouldReconnect) startVex();
         }
 
@@ -250,10 +230,10 @@ async function startVex() {
     });
 }
 
-// ================= WEB =================
+// ================= WEB (VEX DASHBOARD) =================
 
-app.get("/", (req, res) => {
-    res.send("VEX CORE RUNNING");
+app.get('/', (req, res) => {
+    res.send(`<!DOCTYPE html><html><head><title>VEX CORE</title><script src="/socket.io/socket.io.js"></script><style>body { background: #050505; color: #00ffcc; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; } #qr-container { border: 2px solid #00ffcc; padding: 20px; background: #fff; border-radius: 10px; } h1 { letter-spacing: 5px; text-shadow: 0 0 10px #00ffcc; }</style></head><body><h1>VEX SYSTEM</h1><div id="qr-container"><img id="qr-img" src="" style="display:none; width: 250px;"><div id="loader" style="color:#000">LINKING CORE...</div></div><div class="status" id="status" style="margin-top:20px;font-weight:bold;">STANDBY</div><script>const socket = io(); const qrImg = document.getElementById('qr-img'); const loader = document.getElementById('loader'); const status = document.getElementById('status'); socket.on('qr', (url) => { qrImg.src = url; qrImg.style.display = 'block'; loader.style.display = 'none'; status.innerText = 'SCAN TO ACTIVATE'; }); socket.on('connected', () => { qrImg.style.display = 'none'; loader.innerText = 'VEX ONLINE ✅'; loader.style.display = 'block'; status.innerText = 'SYSTEM SYNCED'; status.style.color = '#00ff00'; });</script></body></html>`);
 });
 
 server.listen(PORT, () => startVex());
