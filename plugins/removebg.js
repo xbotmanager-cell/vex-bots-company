@@ -19,7 +19,7 @@ module.exports = {
     async execute(m, sock, ctx) {
         const { args, userSettings } = ctx;
         const style = userSettings?.style || 'harsh';
-        const targetLang = userSettings?.lang || 'sw';
+        const targetLang = userSettings?.lang || 'en';
 
         // 1. Quoted Media Check
         const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
