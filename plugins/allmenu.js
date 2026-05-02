@@ -6,79 +6,89 @@ module.exports = {
     command: "allmenu",
     alias: ["list", "commands"],
     category: "system",
-    description: "Display all available commands with unique UI per mode",
-    
-    async execute(m, sock, { args, userSettings }) {
+    description: "Display all commands with VEX UI optimization",
+
+    async execute(m, sock, ctx) {
+        const { args, userSettings } = ctx;
         const lang = args[0] && args[0].length === 2 ? args[0] : (userSettings?.lang || 'en');
         const style = userSettings?.style || 'harsh';
 
         const pluginDir = path.join(__dirname, '../plugins');
-        const files = fs.readdirSync(pluginDir).filter(file => file.endsWith('.js'));
-        
         let menuData = {};
-        files.forEach(file => {
-            const plugin = require(path.join(pluginDir, file));
-            const cat = plugin.category || "UNDEFINED";
-            if (!menuData[cat]) menuData[cat] = [];
-            menuData[cat].push(plugin.command);
-        });
 
-        // Unique Design Matrix per Mode
+        // 1. SAFE SCANNING ENGINE
+        try {
+            const files = fs.readdirSync(pluginDir).filter(file => file.endsWith('.js'));
+            for (const file of files) {
+                try {
+                    const plugin = require(path.join(pluginDir, file));
+                    if (plugin.command && plugin.category) {
+                        const cat = plugin.category.toLowerCase();
+                        if (!menuData[cat]) menuData[cat] = [];
+                        menuData[cat].push(plugin.command);
+                    }
+                } catch (e) {
+                    continue; // Ruka mafaili yenye error
+                }
+            }
+        } catch (err) {
+            return await sock.sendMessage(m.chat, { text: "⚠️ _Interface_Sync_Error_" });
+        }
+
+        const ping = Math.abs(Date.now() - (m.messageTimestamp * 1000));
+
+        // 2. DESIGN MATRIX
         const designs = {
             harsh: {
-                h: "┏━━━━━━〔 *VEX OVERLOAD* 〕━━━━━━┓\n┃ 👤 *Mstr:* Lupin Starnley\n┃ ⚡ *Spd:* " + (Date.now() - m.messageTimestamp * 1000) + "ms\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n",
-                sep: "▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n",
-                bullet: " ❯❯ .",
+                h: `╰►Hey, @${m.sender.split('@')[0]}\n┏━━━━━━〔 *VEX OVERLOAD* 〕━━━━━━┓\n┃ 👤 *Mstr:* Lupin Starnley\n┃ ⚡ *Spd:* ${ping}ms\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n`,
+                sep: "▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰",
+                bullet: " │✵│▸ .",
                 f: "\n_Don't look at it too long. Get moving._ 🖕",
-                react: "🛡️",
-                err: "⚠️ _Interface failed. Stop breaking things._"
+                react: "🛡️"
             },
             normal: {
-                h: "╭━━━〔 *VEX COMMAND CENTER* 〕━━━╮\n┃ 👤 *Master:* Lupin Starnley\n┃ 📡 *Latency:* " + (Date.now() - m.messageTimestamp * 1000) + "ms\n╰━━━━━━━━━━━━━━━━━━━━╯\n",
-                sep: "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n",
-                bullet: " ❯❯ .",
-                f: "\n_VEX Engine v1.0 | Stable_ ✅",
-                react: "📋",
-                err: "❌ _Critical: Menu synchronization error._"
+                h: `╰►Welcome, @${m.sender.split('@')[0]}\n╭━━━〔 *VEX COMMAND CENTER* 〕━━━╮\n┃ 👤 *Master:* Lupin Starnley\n┃ 📡 *Latency:* ${ping}ms\n╰━━━━━━━━━━━━━━━━━━━━╯\n`,
+                sep: "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯",
+                bullet: " │◦➛ .",
+                f: "\n_VEX Engine v1.2 | Stable_ ✅",
+                react: "📋"
             },
             girl: {
-                h: "🌸✨ ╭━〔 *VEX SWEET LIST* 〕━╮ ✨🌸\n💖 *Master:* My Lupin\n🎀 *Mood:* Sparkling\n╰━━━━━━━━━━━━━━━━━━━━╯\n",
-                sep: "✧･ﾟ: *✧･ﾟ:* *:･ﾟ✧*:･ﾟ✧\n",
-                bullet: " ❯❯ .",
+                h: `╰►Hiie, @${m.sender.split('@')[0]}\n🌸✨ ╭━〔 *VEX SWEET LIST* 〕━╮ ✨🌸\n💖 *Master:* My Lupin\n🎀 *Mood:* Sparkling\n╰━━━━━━━━━━━━━━━━━━━━╯\n`,
+                sep: "✧･ﾟ: *✧･ﾟ:* *:･ﾟ✧*:･ﾟ✧",
+                bullet: " │✨💞 .",
                 f: "\n_Hope you like my commands, babe!_ 🎀🌸",
-                react: "💖",
-                err: "📂 _Oopsie! I can't find my list. Sowwy!_ 🎀"
+                react: "💖"
             }
         };
 
         const current = designs[style] || designs.normal;
 
         try {
-            // Send Specific React per Mode
             await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
 
-            if (userSettings?.silent === true) return;
-
-            let body = "";
+            let bodyText = "";
             Object.keys(menuData).sort().forEach(category => {
-                body += `\n${current.sep}✨ *${category.toUpperCase()}* ✨\n`;
-                menuData[category].forEach(cmd => {
-                    body += `${current.bullet}${cmd}\n`;
+                bodyText += `\n${current.sep}\n✨ *${category.toUpperCase()}* ✨\n`;
+                menuData[category].sort().forEach(cmd => {
+                    bodyText += `${current.bullet}${cmd}\n`;
                 });
             });
 
-            let finalMessage = current.h + body + current.f;
+            let finalMessage = current.h + bodyText + current.f;
 
             if (lang !== 'en') {
                 const res = await translate(finalMessage, { to: lang });
                 finalMessage = res.text;
             }
 
-            await sock.sendMessage(m.chat, { text: finalMessage }, { quoted: m });
+            await sock.sendMessage(m.chat, { 
+                text: finalMessage,
+                mentions: [m.sender]
+            }, { quoted: m });
 
         } catch (error) {
-            console.error("AllMenu Error:", error);
-            await sock.sendMessage(m.chat, { text: current.err });
+            await sock.sendMessage(m.chat, { text: "❌ _Critical_Menu_Failure_" });
         }
     }
 };
