@@ -2,7 +2,7 @@ const translate = require('google-translate-api-x');
 
 module.exports = {
     command: "shield",
-    alias: ["antidelete", "anticall", "ad", "ac"],
+    alias: ["anticall", "ad", "ac"],
     category: "admin",
     description: "Master control for Anti-Delete and Anti-Call systems",
 
