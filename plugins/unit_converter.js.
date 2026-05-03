@@ -1,0 +1,82 @@
+// ================= LUPER-MD CONVERSION ENGINE =================
+const translate = require('google-translate-api-x');
+
+module.exports = {
+    command: "convert",
+    alias: ["badili", "unit", "calc"],
+    category: "utility",
+    description: "Convert units of length, weight, or temperature",
+
+    async execute(m, sock, { args, userSettings, lang, prefix }) {
+        // 1. CONFIG & STYLE SYNC
+        const style = userSettings?.style || 'harsh';
+        const targetLang = lang || 'en';
+        
+        // 2. INPUT DETECTION
+        const value = parseFloat(args[0]);
+        const type = args[1]?.toLowerCase(); // e.g., 'km-m', 'c-f', 'kg-g'
+
+        // 3. STYLES DEFINITION
+        const modes = {
+            harsh: {
+                title: "☣️ 𝕯𝕴𝕲𝕴𝕿𝕬𝕷 𝕸𝕰𝕿𝕽𝕴𝕮 𝕾𝖄𝕾𝕿𝕰𝕸 ☣️",
+                line: "━",
+                header: "💀 𝕽𝖊𝖈𝖍𝖆𝖑𝖎𝖇𝖗𝖆𝖙𝖎𝖓𝖌 𝖉𝖎𝖒𝖊𝖓𝖘𝖎𝖔𝖓𝖘:",
+                invalid: `❌ 𝕴𝖓𝖛𝖆𝖑𝖎𝖉 𝖋𝖔𝖗𝖒𝖆𝖙! 𝖀𝖘𝖊: ${prefix}𝖈𝖔𝖓𝖛𝖊𝖗𝖙 5 𝖐𝖒-𝖒`,
+                react: "📏"
+            },
+            normal: {
+                title: "📏 VEX UNIT CONVERTER 📏",
+                line: "─",
+                header: "💡 Conversion Result:",
+                invalid: `❓ Use format: ${prefix}convert [value] [type]\nTypes: km-m, m-cm, kg-g, c-f`,
+                react: "📏"
+            },
+            girl: {
+                title: "🫧 𝑀𝑒𝓉𝓇𝒾𝒸 𝑀𝒶𝑔𝒾𝒸 𝒫𝓇𝒾𝓃𝒸𝑒𝓈𝓈 🫧",
+                line: "┄",
+                header: "🫧 𝓁𝑒𝓉's 𝒸𝒽𝒶𝓃𝑔𝑒 𝓉𝒽𝑒𝓈𝑒 𝓃𝓊𝓂𝒷𝑒𝓇𝓈~ 🫧",
+                invalid: `🫧 𝑜𝑜𝓅𝓈! 𝓉𝑒𝓁𝓁 𝓂𝑒 𝓌𝒽𝒶𝓉 𝓉𝑜 𝒸𝑜𝓃𝓋𝑒𝓇𝓉, 𝒹𝑒𝒶𝓇~ 🫧`,
+                react: "🎀"
+            }
+        };
+
+        const current = modes[style] || modes.normal;
+
+        if (isNaN(value) || !type) {
+            return m.reply(current.invalid);
+        }
+
+        try {
+            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
+
+            // 4. CONVERSION LOGIC
+            let result;
+            let unitLabel = "";
+
+            switch (type) {
+                case 'km-m': result = value * 1000; unitLabel = "Meters"; break;
+                case 'm-cm': result = value * 100; unitLabel = "Centimeters"; break;
+                case 'kg-g': result = value * 1000; unitLabel = "Grams"; break;
+                case 'c-f': result = (value * 9/5) + 32; unitLabel = "Fahrenheit"; break;
+                case 'f-c': result = (value - 32) * 5/9; unitLabel = "Celsius"; break;
+                default: return m.reply("☣️ Unsupported unit type!");
+            }
+
+            // 5. BUILD THE REPORT
+            let report = `*${current.title}*\n${current.line.repeat(15)}\n\n`;
+            report += `*${current.header}*\n\n`;
+            report += `📥 *Input:* ${value} ${type.split('-')[0].toUpperCase()}\n`;
+            report += `📤 *Output:* ${result.toFixed(2)} ${unitLabel}\n\n`;
+            report += `${current.line.repeat(15)}\n_VEX Intelligence - Lupin Edition_`;
+
+            // 6. TRANSLATE & SEND
+            const { text: translatedMsg } = await translate(report, { to: targetLang });
+            await m.reply(translatedMsg);
+
+        } catch (error) {
+            console.error("CONVERT ERROR:", error);
+            await m.reply("☣️ Calculation engine failure.");
+        }
+    }
+};
