@@ -5,15 +5,17 @@ module.exports = async function router(m, ctx) {
         aliases,
         observers,
         cache,
-        supabase
+        supabase,
+        prefix // Prefix inayotoka index.js (global.prefix)
     } = ctx;
 
     // ================= BASIC INFO =================
 
     const isText = typeof body === "string" && body.length > 0;
 
-    const isCommand = isText && body.startsWith(".");
-    const commandBody = isCommand ? body.slice(1).trim() : "";
+    // LUPIN LOGIC: Inatambua prefix yoyote ile (Super Fast)
+    const isCommand = isText && body.startsWith(prefix);
+    const commandBody = isCommand ? body.slice(prefix.length).trim() : "";
     const args = commandBody.split(/ +/);
     const cmdNameRaw = args.shift()?.toLowerCase();
 
@@ -28,7 +30,8 @@ module.exports = async function router(m, ctx) {
         userSettings,
         cache,
         supabase,
-        commands
+        commands,
+        prefix // Tunapitisha prefix pia kwenye plugins
     };
 
     // ================= 1. OBSERVER FILTER =================
