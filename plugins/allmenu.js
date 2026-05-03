@@ -16,7 +16,7 @@ module.exports = {
         const pluginDir = path.join(__dirname, '../plugins');
         let menuData = {};
 
-        // 1. SAFE SCANNING ENGINE
+        // ================= SAFE SCAN =================
         try {
             const files = fs.readdirSync(pluginDir).filter(file => file.endsWith('.js'));
             for (const file of files) {
@@ -27,37 +27,66 @@ module.exports = {
                         if (!menuData[cat]) menuData[cat] = [];
                         menuData[cat].push(plugin.command);
                     }
-                } catch (e) {
-                    continue; // Ruka mafaili yenye error
+                } catch {
+                    continue;
                 }
             }
-        } catch (err) {
-            return await sock.sendMessage(m.chat, { text: "⚠️ _Interface_Sync_Error_" });
+        } catch {
+            return await sock.sendMessage(m.chat, { text: "⚠️ Interface Sync Error" });
         }
 
         const ping = Math.abs(Date.now() - (m.messageTimestamp * 1000));
 
-        // 2. DESIGN MATRIX
+        // ================= DESIGN SYSTEM =================
         const designs = {
             harsh: {
-                h: `╰►Hey, @${m.sender.split('@')[0]}\n┏━━━━━━〔 *VEX OVERLOAD* 〕━━━━━━┓\n┃ 👤 *Mstr:* Lupin Starnley\n┃ ⚡ *Spd:* ${ping}ms\n┗━━━━━━━━━━━━━━━━━━━━━━┛\n`,
-                sep: "▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰",
-                bullet: " │✵│▸ .",
-                f: "\n_Don't look at it too long. Get moving._ 🖕",
-                react: "🛡️"
+                h:
+`╭━━━〔 ⚡ 𝖁𝕰𝖃 𝕺𝖁𝕰𝕽𝕷𝕺𝕬𝕯 ⚡ 〕━━━╮
+┃ 👤 User  : @${m.sender.split('@')[0]}
+┃ 🧠 Dev   : Lupin Starnley
+┃ ⚡ Speed : ${ping}ms
+╰━━━━━━━━━━━━━━━━━━━━━━━╯`,
+
+                sep: "╭───────────────◇───────────────╮",
+                footSep: "╰───────────────◇───────────────╯",
+                bullet: "┃ ⚔️  .",
+                end:
+`╰━━━━━━━━━━━━━━━━━━━━━━━╯
+☣️ _System loaded. Don’t waste time._`,
+                react: "⚡"
             },
+
             normal: {
-                h: `╰►Welcome, @${m.sender.split('@')[0]}\n╭━━━〔 *VEX COMMAND CENTER* 〕━━━╮\n┃ 👤 *Master:* Lupin Starnley\n┃ 📡 *Latency:* ${ping}ms\n╰━━━━━━━━━━━━━━━━━━━━╯\n`,
-                sep: "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯",
-                bullet: " │◦➛ .",
-                f: "\n_VEX Engine v1.2 | Stable_ ✅",
-                react: "📋"
+                h:
+`╭━━━〔 💠 VEX COMMAND CENTER 💠 〕━━━╮
+┃ 👤 User     : @${m.sender.split('@')[0]}
+┃ 🤖 System   : Online
+┃ 📡 Latency  : ${ping}ms
+╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯`,
+
+                sep: "╭───────────────◆───────────────╮",
+                footSep: "╰───────────────◆───────────────╯",
+                bullet: "┃ ➤  .",
+                end:
+`╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯
+✅ _All systems stable_`,
+                react: "📊"
             },
+
             girl: {
-                h: `╰►Hiie, @${m.sender.split('@')[0]}\n🌸✨ ╭━〔 *VEX SWEET LIST* 〕━╮ ✨🌸\n💖 *Master:* My Lupin\n🎀 *Mood:* Sparkling\n╰━━━━━━━━━━━━━━━━━━━━╯\n`,
-                sep: "✧･ﾟ: *✧･ﾟ:* *:･ﾟ✧*:･ﾟ✧",
-                bullet: " │✨💞 .",
-                f: "\n_Hope you like my commands, babe!_ 🎀🌸",
+                h:
+`🌸╭━━━〔 𝑉𝐸𝒳 𝑀𝐸𝒩𝒰 𝒟𝐼𝒜𝑅𝒴 〕━━━╮🌸
+💖 User   : @${m.sender.split('@')[0]}
+🎀 Mood   : Cute & Ready
+✨ Speed  : ${ping}ms
+🌸╰━━━━━━━━━━━━━━━━━━━━━━━╯`,
+
+                sep: "╭────────── ✦ ──────────╮",
+                footSep: "╰────────── ✦ ──────────╯",
+                bullet: "┃ 💕  .",
+                end:
+`🌸╰━━━━━━━━━━━━━━━━━━━━━━━╯
+🎀 _Pick anything you like, babe~_`,
                 react: "💖"
             }
         };
@@ -65,30 +94,40 @@ module.exports = {
         const current = designs[style] || designs.normal;
 
         try {
-            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
+            await sock.sendMessage(m.chat, {
+                react: { text: current.react, key: m.key }
+            });
 
             let bodyText = "";
+
             Object.keys(menuData).sort().forEach(category => {
-                bodyText += `\n${current.sep}\n✨ *${category.toUpperCase()}* ✨\n`;
+                bodyText += `\n${current.sep}\n`;
+                bodyText += `┃ 📂  *${category.toUpperCase()}*\n`;
+                bodyText += `┃\n`;
+
                 menuData[category].sort().forEach(cmd => {
                     bodyText += `${current.bullet}${cmd}\n`;
                 });
+
+                bodyText += `${current.footSep}\n`;
             });
 
-            let finalMessage = current.h + bodyText + current.f;
+            let finalMessage = `${current.h}\n${bodyText}\n${current.end}`;
 
             if (lang !== 'en') {
-                const res = await translate(finalMessage, { to: lang });
-                finalMessage = res.text;
+                try {
+                    const res = await translate(finalMessage, { to: lang });
+                    finalMessage = res.text;
+                } catch {}
             }
 
-            await sock.sendMessage(m.chat, { 
+            await sock.sendMessage(m.chat, {
                 text: finalMessage,
                 mentions: [m.sender]
             }, { quoted: m });
 
-        } catch (error) {
-            await sock.sendMessage(m.chat, { text: "❌ _Critical_Menu_Failure_" });
+        } catch {
+            await sock.sendMessage(m.chat, { text: "❌ Menu Error" });
         }
     }
 };
