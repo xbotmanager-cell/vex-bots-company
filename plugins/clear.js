@@ -1,22 +1,21 @@
 /**
- * VEX PLUGIN: CLEAR CHAT (ULTIMATE FORCE SYNC)
- * Feature: Style React + Silent Deep Clear
- * Version: 2.0 (Power Million)
- * Dev: Lupin Starnley
+ * VEX PLUGIN: CLEAR CHAT (ULTIMATE SAFE ENGINE)
+ * Version: 3.0 (Anti-Ban + Stability Boost)
  */
 
 module.exports = {
     command: "clear",
     alias: ["cls", "clearalldm", "futa"],
     category: "tools",
-    description: "Cleans the entire chat history silently with deep sync technology",
+    description: "Safely clears chat UI with multi-layer sync",
 
     async execute(m, sock, { userSettings }) {
-        // Tunapata JID ya chat husika
-        const chatJid = m.chat || m.key.remoteJid;
-        const style = userSettings?.style?.value || 'harsh';
 
-        // Reaction Matrix kulingana na style yako
+        const chatJid = m.chat || m.key.remoteJid;
+
+        // ================= STYLE =================
+        const style = userSettings?.style || 'harsh';
+
         const modes = {
             harsh: { react: "🗑️" },
             normal: { react: "🧹" },
@@ -25,44 +24,74 @@ module.exports = {
 
         const currentMode = modes[style] || modes.normal;
 
+        // ================= ANTI-SPAM =================
+        global.clearCooldown = global.clearCooldown || {};
+
+        if (global.clearCooldown[chatJid]) {
+            return; // silent ignore to avoid spam
+        }
+
+        global.clearCooldown[chatJid] = true;
+
+        setTimeout(() => {
+            delete global.clearCooldown[chatJid];
+        }, 10000); // 10 sec cooldown
+
         try {
-            // 1. Send Reaction kwanza kama ishara (Signal)
-            await sock.sendMessage(chatJid, { 
-                react: { 
-                    text: currentMode.react, 
-                    key: m.key 
-                } 
+            // ================= REACTION =================
+            await sock.sendMessage(chatJid, {
+                react: {
+                    text: currentMode.react,
+                    key: m.key
+                }
             });
 
-            // 2. DEEP CLEAR LOGIC (Hapa ndo kuna nguvu milioni)
-            // Tunatumia chatModify yenye "allMessages: true" ili kufagia kila kitu
-            await sock.chatModify({
-                clear: {
-                    messages: [
-                        {
+            // ================= SAFE DELAY =================
+            await new Promise(r => setTimeout(r, 400));
+
+            // ================= METHOD 1: CLEAR TRY =================
+            try {
+                await sock.chatModify({
+                    clear: {
+                        messages: [{
                             id: m.key.id,
                             fromMe: m.key.fromMe,
                             timestamp: m.messageTimestamp
-                        }
-                    ]
-                }
-            }, chatJid);
+                        }]
+                    }
+                }, chatJid);
+            } catch {}
 
-            // 3. Option ya ziada: Archive & Unarchive (Hii inalazimisha WhatsApp UI kufuta chat)
-            // Hii inahakikisha screen inakuwa nyeupe kabisa (Safi)
-            await sock.chatModify({
-                archive: true,
-                lastMessages: [{ key: m.key, messageTimestamp: m.messageTimestamp }]
-            }, chatJid);
+            // ================= METHOD 2: ARCHIVE FORCE =================
+            try {
+                await sock.chatModify({
+                    archive: true,
+                    lastMessages: [{
+                        key: m.key,
+                        messageTimestamp: m.messageTimestamp
+                    }]
+                }, chatJid);
+            } catch {}
 
-            // Rudisha chat baada ya millisecond 500 (Invisible speed)
-            setTimeout(async () => {
+            // ================= METHOD 3: HARD REFRESH =================
+            await new Promise(r => setTimeout(r, 600));
+
+            try {
                 await sock.chatModify({ archive: false }, chatJid);
-            }, 500);
+            } catch {}
+
+            // ================= METHOD 4: OPTIONAL DELETE YOUR MESSAGE =================
+            try {
+                await sock.sendMessage(chatJid, {
+                    delete: m.key
+                });
+            } catch {}
+
+            // ================= FINAL SYNC DELAY =================
+            await new Promise(r => setTimeout(r, 300));
 
         } catch (error) {
-            // Ikishindikana kabisa, log itatokea kwenye terminal yako
-            console.error("🔥 [VEX CLEAR ERROR]:", error);
+            console.error("🔥 [VEX CLEAR ERROR SAFE]:", error);
         }
     }
 };
