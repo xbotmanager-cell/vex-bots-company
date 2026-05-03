@@ -36,6 +36,9 @@ const commands = new Map();
 const aliases = new Map();
 const observers = [];
 
+// ================= PAIRING SYSTEM (NEW ADD ONLY) =================
+const activePairings = new Map();
+
 // ================= SERVER =================
 const app = express();
 const server = http.createServer(app);
@@ -147,11 +150,17 @@ async function syncSettings() {
                 filter: "setting_name=eq.prefix"
             }, payload => {
                 global.prefix = payload.new.extra_data.current;
-                console.log("⚡ Prefix Updated:", global.prefix);
             })
             .subscribe();
 
     } catch {}
+}
+
+// ================= PHONE VALIDATION (NEW) =================
+function cleanNumber(num) {
+    if (!num) return null;
+    const n = num.replace("+", "").replace(/\s/g, "");
+    return /^\d{8,15}$/.test(n) ? n : null;
 }
 
 // ================= MAIN =================
@@ -177,12 +186,49 @@ async function startVex() {
         browser: ["VEX CORE", "Chrome", "5.0"]
     });
 
+    // ================= PAIRING ENGINE (NEW ADD ONLY) =================
+    app.use(express.json());
+
+    app.post("/pair", async (req, res) => {
+        try {
+            const number = cleanNumber(req.body.number);
+
+            if (!number) {
+                return res.json({ error: "Invalid number" });
+            }
+
+            const jid = number + "@s.whatsapp.net";
+
+            const code = await sock.requestPairingCode(jid);
+
+            const expiry = Date.now() + 90000;
+
+            activePairings.set(number, { code, expiry });
+
+            io.emit("pairing", { number, code, expiry });
+
+            res.json({ code, expiry });
+
+        } catch (e) {
+            res.json({ error: "Pairing failed", details: e.message });
+        }
+    });
+
+    // expiry cleanup
+    setInterval(() => {
+        const now = Date.now();
+        for (const [num, data] of activePairings.entries()) {
+            if (now > data.expiry) {
+                activePairings.delete(num);
+                io.emit("pairing-expired", { number: num });
+            }
+        }
+    }, 1000);
+
     // ================= MESSAGE ENGINE =================
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const m = messages[0];
         if (!m || !m.message) return;
-
-        const type = getContentType(m.message);
 
         let body =
             m.message?.conversation ||
@@ -193,12 +239,9 @@ async function startVex() {
 
         m.chat = m.key.remoteJid;
         m.sender = m.key.participant || m.chat;
-        m.isGroup = m.chat.endsWith("@g.us");
 
-        m.reply = (text) =>
-            sock.sendMessage(m.chat, { text }, { quoted: m });
+        m.reply = (t) => sock.sendMessage(m.chat, { text: t }, { quoted: m });
 
-        // ================= OBSERVERS ALWAYS RUN =================
         for (const obs of observers) {
             try {
                 if (!obs.trigger || obs.trigger(m)) {
@@ -211,7 +254,6 @@ async function startVex() {
             } catch {}
         }
 
-        // ================= COMMAND CHECK =================
         if (!body.startsWith(global.prefix)) return;
 
         try {
@@ -251,13 +293,11 @@ async function startVex() {
         if (connection === "open") {
             io.emit("connected");
 
-            console.log("🚀 VEX ONLINE");
-
             await syncSessionToCloud(state.creds);
 
             setTimeout(() => {
                 sock.sendMessage(sock.user.id, {
-                    text: `VEX ACTIVE\nPrefix: ${global.prefix}\nCommands: ${commands.size}`
+                    text: `VEX ACTIVE\nPrefix: ${global.prefix}`
                 });
             }, 3000);
         }
@@ -269,51 +309,64 @@ async function startVex() {
     });
 }
 
-// ================= WEB DASHBOARD =================
+// ================= WEB UI (GLASS + QR) =================
 app.get("/", (req, res) => {
-    res.send(`<!DOCTYPE html>
+    res.send(`
+<!DOCTYPE html>
 <html>
 <head>
 <title>VEX CORE</title>
 <script src="/socket.io/socket.io.js"></script>
 <style>
 body {
-    background: #050505;
-    color: #00ffcc;
-    font-family: monospace;
+    margin:0;
+    height:100vh;
     display:flex;
     justify-content:center;
     align-items:center;
-    flex-direction:column;
-    height:100vh;
+    background:#000;
+    color:#00ffe1;
+    font-family:monospace;
+}
+.card {
+    padding:20px;
+    border-radius:20px;
+    backdrop-filter:blur(15px);
+    background:rgba(255,255,255,0.05);
+    box-shadow:0 0 20px #00ffe1;
+    text-align:center;
+}
+img {
+    margin-top:10px;
+    border-radius:10px;
 }
 </style>
 </head>
 <body>
 
-<h1>VEX SYSTEM</h1>
-
+<div class="card">
+<h2>VEX SYSTEM</h2>
 <img id="qr" width="250"/>
+</div>
 
 <script>
 const socket = io();
 const qr = document.getElementById("qr");
 
-socket.on("qr", data => {
-    qr.src = data;
-});
+socket.on("qr", d => qr.src = d);
+socket.on("connected", () => qr.style.display="none");
 
-socket.on("connected", () => {
-    qr.style.display = "none";
-});
+socket.on("pairing", d => console.log("PAIR:", d));
+socket.on("pairing-expired", d => console.log("EXPIRED:", d));
 </script>
 
 </body>
-</html>`);
+</html>
+`);
 });
 
 server.listen(PORT, () => startVex());
 
-// ================= ERROR SILENT =================
+// ================= SILENT ERRORS =================
 process.on("uncaughtException", () => {});
 process.on("unhandledRejection", () => {});
