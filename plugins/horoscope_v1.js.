@@ -1,0 +1,82 @@
+// ================= LUPER-MD ASTROLOGY ENGINE =================
+const translate = require('google-translate-api-x');
+
+module.exports = {
+    command: "nyota",
+    alias: ["star", "horoscope", "fortune"],
+    category: "lifestyle",
+    description: "Get your daily zodiac sign prediction",
+
+    async execute(m, sock, { args, userSettings, lang, prefix }) {
+        // 1. CONFIG & STYLE SYNC
+        const style = userSettings?.style || 'harsh';
+        const targetLang = lang || 'en';
+        const sign = args[0]?.toLowerCase();
+
+        // 2. DATA POOL (Zodiac Predictions)
+        const zodiacs = {
+            aries: "Your energy is high today. Take the lead in your projects.",
+            taurus: "Financial stability is coming. Be patient with your investments.",
+            gemini: "Communication is key today. Reach out to an old friend.",
+            cancer: "Your intuition is sharp. Trust your gut feelings.",
+            leo: "You are the center of attention. Shine bright like a star.",
+            virgo: "Focus on the details. Organization will bring you peace.",
+            libra: "Balance is needed in your relationships. Stay calm.",
+            scorpio: "Passion is driving you today. Focus it on something creative.",
+            sagittarius: "Adventure is calling. Explore new ideas and places.",
+            capricorn: "Hard work pays off. Keep pushing toward your goals.",
+            aquarius: "Innovation is your strength. Think outside the box.",
+            pisces: "Your dreams are vivid. Listen to what they are telling you."
+        };
+
+        // 3. STYLES DEFINITION
+        const modes = {
+            harsh: {
+                title: "☣️ 𝕯𝕴𝕲𝕴𝕿𝕬𝕷 𝕺𝕽𝕬𝕮𝕷𝕰 ☣️",
+                line: "━",
+                header: "💀 𝖄𝖔𝖚𝖗 𝖋𝖆𝖙𝖊 𝖎𝖘 𝖘𝖊𝖆𝖑𝖊𝖉, 𝖒𝖔𝖗𝖙𝖆𝖑:",
+                invalid: `❌ 𝕾𝖕𝖊𝖈𝖎𝖋𝖞 𝖆 𝖘𝖎𝖌𝖓! 𝕰𝖝: ${prefix}𝖘𝖙𝖆𝖗 𝖑𝖊𝖔`,
+                react: "🔮"
+            },
+            normal: {
+                title: "🌟 VEX HOROSCOPE 🌟",
+                line: "─",
+                header: "💡 Daily Zodiac Insight:",
+                invalid: `❓ Please provide a sign! Example: ${prefix}star aries`,
+                react: "🌟"
+            },
+            girl: {
+                title: "🫧 𝒮𝓉𝒶𝓇𝓇𝓎 𝐹𝑜𝓇𝓉𝓊𝓃𝑒 𝒫𝓇𝒾𝓃𝒸𝑒𝓈𝓈 🫧",
+                line: "┄",
+                header: "🫧 𝓌𝒽𝒶𝓉 𝒹𝑜 𝓉𝒽𝑒 𝓈𝓉𝒶𝓇𝓈 𝓈𝒶𝓎 𝒻𝑜𝓇 𝓎𝑜𝓊? 🫧",
+                invalid: `🫧 𝓅𝓁𝑒𝒶𝓈𝑒 𝓉𝑒𝓁𝓁 𝓂𝑒 𝓎𝑜𝓊𝓇 𝓈𝒾𝑔𝓃, 𝒹𝑒𝒶𝓇~ 🫧`,
+                react: "🎀"
+            }
+        };
+
+        const current = modes[style] || modes.normal;
+
+        // 4. VALIDATION
+        if (!sign || !zodiacs[sign]) {
+            return m.reply(current.invalid);
+        }
+
+        try {
+            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
+
+            // 5. BUILD THE MESSAGE
+            let report = `*${current.title}*\n${current.line.repeat(15)}\n\n`;
+            report += `*${current.header}*\n\n`;
+            report += `✨ *${sign.toUpperCase()}:* \n"${zodiacs[sign]}"\n\n`;
+            report += `${current.line.repeat(15)}\n_VEX Intelligence - Lupin Edition_`;
+
+            // 6. TRANSLATE & SEND
+            const { text: translatedMsg } = await translate(report, { to: targetLang });
+            await m.reply(translatedMsg);
+
+        } catch (error) {
+            console.error("STAR ERROR:", error);
+            await m.reply("☣️ The stars are hidden behind cosmic clouds.");
+        }
+    }
+};
