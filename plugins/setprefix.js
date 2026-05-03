@@ -7,63 +7,88 @@ module.exports = {
     description: "Badilisha alama ya kuanzia commands (Prefix)",
 
     async execute(m, sock, { args, supabase, userSettings }) {
-        // 1. EXTRACT PREFERENCES
+
+        // ================= USER PREF =================
         const style = userSettings?.style || 'harsh';
         const lang = userSettings?.lang || 'en';
         const newPrefix = args[0];
 
+        // ================= UI MODES =================
         const modes = {
             harsh: {
                 title: "☣️ 𝕾𝖄𝕾𝕿𝕰𝕸 𝕮𝕺𝕹𝕿𝕽𝕺𝕷 ☣️",
-                success: `⚙️ 𝕻𝖗𝖊𝖋𝖎e𝖝 𝖀𝖕𝖉𝖆𝖙𝖊𝖉 𝖙𝖔: [ ${newPrefix} ]. 𝕯𝖔𝖓'𝖙 𝖋𝖔𝖗𝖌𝖊𝖙 𝖎𝖙, 𝖑𝖔𝖘𝖊𝖗.`,
-                invalid: "☘️ 𝕻𝖑𝖊𝖆𝖘𝖊 𝖕𝖗𝖔𝖛𝖎𝖉𝖊 𝖆 𝖓𝖊𝖜 𝖕𝖗𝖊𝖋𝖎𝖝!",
+                success: (p) => `⚙️ 𝕻𝖗𝖊𝖋𝖎𝖝 𝖀𝖕𝖉𝖆𝖙𝖊𝖉 → [ ${p} ]`,
+                invalid: "☘️ 𝕻𝖗𝖔𝖛𝖎𝖉𝖊 𝖓𝖊𝖜 𝖕𝖗𝖊𝖋𝖎𝖝.",
                 react: "☣️"
             },
             normal: {
                 title: "💠 VEX Prefix System 💠",
-                success: `✅ Bot prefix has been changed to: ${newPrefix}`,
-                invalid: "❓ Please type the new prefix after the command.",
+                success: (p) => `✅ Prefix changed to: ${p}`,
+                invalid: "❓ Provide a new prefix.",
                 react: "💠"
             },
             girl: {
-                title: "🫧 𝐿𝓊𝓅𝑒𝓇'𝓈 𝒫𝒾𝓃𝓀 𝒮𝓌𝒾𝓉𝒸𝒽 🫧",
-                success: `🫧 𝓃𝑒𝓌 𝓅𝓇𝑒𝓋𝒾𝓍 𝒾𝓈 [ ${newPrefix} ]! 𝓈𝑜 𝒸𝓊𝓉𝑒~ 🫧`,
-                invalid: "🫧 𝓅𝓁𝑒𝒶𝓈𝑒 𝓉𝑒𝓁𝓁 𝓂𝑒 𝓉𝒽𝑒 𝓃𝑒𝓌 𝓅𝓇𝑒𝒻𝒾formatting𝓍, 𝓅𝓇𝒾𝓃𝒸𝑒𝓈𝓈! 🫧",
+                title: "🫧 𝐿𝓊𝓅𝑒𝓇 𝒫𝓇𝑒𝒻𝒾𝓍 🫧",
+                success: (p) => `🫧 new prefix is [ ${p} ] ~ 💕`,
+                invalid: "🫧 tell me the new prefix 🥺",
                 react: "🫧"
             }
         };
 
         const current = modes[style] || modes.normal;
 
-        // 2. VALIDATE INPUT
-        if (!newPrefix) {
+        // ================= VALIDATION =================
+        if (!newPrefix || newPrefix.length > 3) {
             return m.reply(current.invalid);
         }
 
         try {
-            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
+            // ================= REACT =================
+            await sock.sendMessage(m.chat, {
+                react: { text: current.react, key: m.key }
+            });
 
-            // 3. UPDATE VEX_SETTINGS TABLE (SQL)
-            // Tunabadilisha 'current' ndani ya JSON ya extra_data
+            // ================= FETCH OLD DATA =================
+            const { data: oldData } = await supabase
+                .from("vex_settings")
+                .select("extra_data")
+                .eq("setting_name", "prefix")
+                .single();
+
+            const mergedData = {
+                ...(oldData?.extra_data || {}),
+                current: newPrefix
+            };
+
+            // ================= UPDATE =================
             const { error } = await supabase
                 .from("vex_settings")
-                .update({ 
-                    extra_data: { current: newPrefix },
-                    created_at: new Date() 
+                .update({
+                    extra_data: mergedData
                 })
                 .eq("setting_name", "prefix");
 
             if (error) throw error;
 
-            // 4. TRANSLATE AND REPLY
-            const responseText = `*${current.title}*\n\n${current.success}`;
-            const { text: translatedMsg } = await translate(responseText, { to: lang });
+            // ================= INSTANT LOCAL UPDATE =================
+            global.prefix = newPrefix;
 
-            await m.reply(translatedMsg);
+            // ================= RESPONSE =================
+            let response = `*${current.title}*\n\n${current.success(newPrefix)}`;
 
-        } catch (error) {
-            console.error("PREFIX UPDATE ERROR:", error);
-            await m.reply("☣️ Database Sync Failed. Prefix remained unchanged.");
+            if (lang !== "en") {
+                try {
+                    const res = await translate(response, { to: lang });
+                    response = res.text;
+                } catch {}
+            }
+
+            await m.reply(response);
+
+        } catch (err) {
+            console.error("PREFIX ERROR:", err.message);
+
+            await m.reply("⚠️ Failed to update prefix.");
         }
     }
 };
