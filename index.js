@@ -22,6 +22,9 @@ const QRCode = require("qrcode");
 const { createClient } = require("@supabase/supabase-js");
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
+// GLOBAL CONFIG (Lupin Dynamic Prefix System)
+global.prefix = "."; // Default kama database ikifeli
+
 // CORE SYSTEMS (future-ready)
 const router = require("./core/router"); 
 const cache = require("./core/cache");   
@@ -122,11 +125,35 @@ async function loadSessionFromCloud() {
     }
 }
 
+// ================= DYNAMIC SETTINGS (SUPER FAST SYNC) =================
+
+async function syncSettings() {
+    // 1. Initial Fetch
+    const { data } = await supabase.from('vex_settings').select('extra_data').eq('setting_name', 'prefix').single();
+    if (data && data.extra_data) {
+        global.prefix = data.extra_data.current || ".";
+        console.log(`🎯 [VEX]: Prefix loaded: ${global.prefix}`);
+    }
+
+    // 2. Realtime Listener (No Restart Needed)
+    supabase
+        .channel('schema-db-changes')
+        .on('postgres_changes', 
+            { event: 'UPDATE', schema: 'public', table: 'vex_settings', filter: 'setting_name=eq.prefix' }, 
+            (payload) => {
+                global.prefix = payload.new.extra_data.current;
+                console.log(`⚡ [REALTIME]: Prefix updated to: ${global.prefix}`);
+            }
+        )
+        .subscribe();
+}
+
 // ================= MAIN =================
 
 async function startVex() {
 
     await loadSessionFromCloud();
+    await syncSettings(); // Sync prefix kabla ya kila kitu
 
     loadCommands();
     loadObservers();
@@ -173,7 +200,8 @@ async function startVex() {
                 aliases,
                 observers,
                 cache,
-                supabase
+                supabase,
+                prefix: global.prefix // Pass dynamic prefix to router
             });
 
             if (!route) return;
@@ -218,7 +246,7 @@ async function startVex() {
 
             setTimeout(async () => {
                 await sock.sendMessage(sock.user.id, {
-                    text: `VEX CORE ACTIVE\nCommands: ${commands.size}\nObservers: ${observers.length}`
+                    text: `VEX CORE ACTIVE\nPrefix: ${global.prefix}\nCommands: ${commands.size}\nObservers: ${observers.length}`
                 });
             }, 4000);
         }
