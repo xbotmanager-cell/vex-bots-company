@@ -1,16 +1,33 @@
-const axios = require('axios');
+const axios = require("axios");
+
+// simple retry helper
+async function fetchWithRetry(url, retries = 3, timeout = 8000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await axios.get(url, { timeout });
+        } catch (err) {
+            if (i === retries - 1) throw err;
+        }
+    }
+}
+
+// safe username checker
+function cleanUser(input) {
+    if (!input) return null;
+    const u = input.replace("@", "").trim();
+    return /^[a-zA-Z0-9._]{1,30}$/.test(u) ? u : null;
+}
 
 module.exports = {
     command: "igstalker",
     alias: ["igs", "instastalk", "ig"],
     category: "stalker",
-    description: "Extract deep intelligence from Instagram profiles",
+    description: "Extract Instagram profile intelligence (safe mode enhanced)",
 
     async execute(m, sock, { args, userSettings }) {
-        const style = userSettings?.style || 'harsh';
-        const user = args[0]?.replace('@', '');
+        const style = userSettings?.style || "normal";
+        const user = cleanUser(args[0]);
 
-        // 1. FRESH ARCHITECTURE (New Symbols - No Repetition)
         const modes = {
             harsh: {
                 title: "⚓ ɪɴsᴛᴀɢʀᴀᴍ sᴜʀᴠᴇɪʟʟᴀɴᴄᴇ ⚓",
@@ -19,13 +36,13 @@ module.exports = {
                 footer: "`> identity compromised`"
             },
             normal: {
-                title: "⚖ *Instagram Profile Audit* ⚖",
+                title: "⚖ Instagram Profile Audit ⚖",
                 bullet: "❂",
                 react: "📸",
                 footer: "`> audit complete`"
             },
             girl: {
-                title: "✨ 𝒻ℴ𝓊𝓃𝒹 𝓎ℴ𝓊 ℴ𝓃 𝒾𝓃𝓈𝓉𝒶! 🎀",
+                title: "✨ found you on insta 🎀",
                 bullet: "💎",
                 react: "🍭",
                 footer: "`> profile peeked`"
@@ -33,56 +50,79 @@ module.exports = {
         };
 
         const current = modes[style] || modes.normal;
-        if (!user) return m.reply("☡ *Entry Denied:* Provide a username.");
+
+        if (!user) {
+            return m.reply("⚠ Invalid username. Provide a valid Instagram handle.");
+        }
 
         try {
-            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
+            await sock.sendMessage(m.chat, {
+                react: { text: current.react, key: m.key }
+            });
 
-            // 2. INTEL HARVESTING (Rapid API / Scraper alternative)
-            const { data } = await axios.get(`https://api.screenshotlayer.com/php_helper_scripts/instagram.php?username=${user}`); 
-            // Kumbuka: Hii ni njia mbadala ya haraka, unaweza kutumia API yoyote ya IG unayopenda.
-            
-            const stats = data; 
+            let stats;
 
-            // 3. DATA STRUCTURE
-            const igData = {
-                fullname: stats.full_name || "Unknown Entity",
-                bio: stats.biography || "No Bio Data",
-                followers: stats.edge_followed_by?.count || 0,
-                following: stats.edge_follow?.count || 0,
-                posts: stats.edge_owner_to_timeline_media?.count || 0,
-                isPrivate: stats.is_private ? "🔐 Private Account" : "🔓 Public Account",
-                isVerified: stats.is_verified ? "🛡 Verified" : "✖ Standard",
-                profilePic: stats.profile_pic_url_hd || stats.profile_pic_url
-            };
+            try {
+                const url = `https://api.screenshotlayer.com/php_helper_scripts/instagram.php?username=${user}`;
+                const res = await fetchWithRetry(url);
+                stats = res?.data;
+            } catch (apiErr) {
+                console.error("Primary API failed:", apiErr.message);
 
-            // 4. THE INTEL REPORT (New Layout)
-            let report = `${current.title}\n\n`;
-            report += `${current.bullet} **Name:** ${igData.fullname}\n`;
-            report += `${current.bullet} **Rank:** ${igData.isVerified}\n`;
-            report += `${current.bullet} **Access:** ${igData.isPrivate}\n`;
-            report += `${current.bullet} **Bio:** ${igData.bio}\n`;
-            report += `${current.bullet} **Followers:** ${igData.followers.toLocaleString()}\n`;
-            report += `${current.bullet} **Following:** ${igData.following.toLocaleString()}\n`;
-            report += `${current.bullet} **Assets:** ${igData.posts} Posts\n`;
-            report += `${current.bullet} **Link:** instagram.com/${user}\n\n`;
-            report += `${current.footer}`;
-
-            // 5. DELIVERY
-            if (igData.profilePic) {
-                await sock.sendMessage(m.chat, { 
-                    image: { url: igData.profilePic }, 
-                    caption: report 
-                }, { quoted: m });
-            } else {
-                await sock.sendMessage(m.chat, { text: report }, { quoted: m });
+                // fallback safe structure (no crash)
+                stats = null;
             }
 
-        } catch (error) {
-            console.error("IG Stalk Error:", error);
-            await sock.sendMessage(m.chat, { 
-                text: `⚖ *SYSTEM BREACH:* Could not fetch data for this user.\n\n${current.footer}` 
-            });
+            // safe mapping (NO crash zone)
+            const igData = {
+                fullname: stats?.full_name || "Unknown",
+                bio: stats?.biography || "No bio available",
+                followers: stats?.edge_followed_by?.count ?? 0,
+                following: stats?.edge_follow?.count ?? 0,
+                posts: stats?.edge_owner_to_timeline_media?.count ?? 0,
+                isPrivate: stats?.is_private ? "🔐 Private" : "🔓 Public",
+                isVerified: stats?.is_verified ? "🛡 Verified" : "✖ Standard",
+                profilePic: stats?.profile_pic_url_hd || stats?.profile_pic_url || null
+            };
+
+            let report =
+`${current.title}
+
+${current.bullet} Name: ${igData.fullname}
+${current.bullet} Rank: ${igData.isVerified}
+${current.bullet} Access: ${igData.isPrivate}
+${current.bullet} Bio: ${igData.bio}
+${current.bullet} Followers: ${igData.followers.toLocaleString()}
+${current.bullet} Following: ${igData.following.toLocaleString()}
+${current.bullet} Posts: ${igData.posts}
+${current.bullet} Profile: instagram.com/${user}
+
+${current.footer}`;
+
+            // always respond (no fail forever)
+            if (igData.profilePic) {
+                await sock.sendMessage(m.chat, {
+                    image: { url: igData.profilePic },
+                    caption: report
+                }, { quoted: m });
+            } else {
+                await sock.sendMessage(m.chat, {
+                    text: report + "\n\n⚠ Media unavailable, text-only mode."
+                }, { quoted: m });
+            }
+
+        } catch (err) {
+            console.error("IG module crash:", err);
+
+            await sock.sendMessage(m.chat, {
+                text:
+`⚠ SYSTEM SAFE MODE ACTIVATED
+• Unable to fetch Instagram data right now
+• Try again in a few seconds
+• Username: @${user || "unknown"}
+
+> request completed with fallback mode`
+            }, { quoted: m });
         }
     }
 };
