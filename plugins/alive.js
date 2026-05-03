@@ -1,73 +1,128 @@
-const translate = require('google-translate-api-x');
-const os = require('os');
+module.exports = async function router(m, ctx) {
+    const {
+        body,
+        commands,
+        aliases,
+        observers,
+        cache,
+        supabase,
+        prefix
+    } = ctx;
 
-module.exports = {
-    command: "alive",
-    category: "system",
-    description: "Check detailed system health and status",
-    
-    async execute(m, sock, { args, userSettings }) {
-        const uptime = process.uptime();
-        const hours = Math.floor(uptime / 3600);
-        const minutes = Math.floor((uptime % 3600) / 60);
-        
-        // RAM & Performance Stats
-        const ramUsed = (process.memoryUsage().rss / 1024 / 1024).toFixed(2); // Physical RAM used
-        const ramTotal = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
-        const speed = Date.now() - (m.messageTimestamp * 1000);
-        
-        const lang = args[0] && args[0].length === 2 ? args[0] : (userSettings?.lang || 'en');
-        const style = userSettings?.style || 'harsh';
+    // ================= BASIC =================
 
-        const stats = `📊 *SYSTEM METRICS*\n` +
-                      `• Speed: ${speed}ms\n` +
-                      `• Runtime: ${hours}h ${minutes}m\n` +
-                      `• RAM: ${ramUsed}MB / ${ramTotal}GB\n` +
-                      `• Stability: Stable (0x0)\n` +
-                      `• Status: Active`;
+    const isText = typeof body === "string" && body.length > 0;
 
-        // Response Matrix with specific Reactions and Errors
-        const modes = {
-            harsh: {
-                text: `${stats}\n\n_Everything is working. Now get lost and do something useful._ 🖕`,
-                react: "🖕",
-                err: "⚠️ _System's fine, you're the error._"
-            },
-            normal: {
-                text: `${stats}\n\n_All systems are operational and stable._ ✅`,
-                react: "🟢",
-                err: "⚠️ _An internal error occurred during status check._"
-            },
-            girl: {
-                text: `${stats}\n\n_I'm up and running perfectly just for you!_ ✨🌸`,
-                react: "💖",
-                err: "📂 _Oopsie! My system had a tiny hiccup, sowwy!_ 🎀"
-            }
-        };
+    // ⚡ FAST PREFIX CHECK (safe)
+    const isCommand = isText && prefix && body.startsWith(prefix);
 
-        const currentMode = modes[style] || modes.normal;
+    let cmdNameRaw = "";
+    let args = [];
 
-        try {
-            // Send Reaction First (Style Dependent)
-            await sock.sendMessage(m.chat, { react: { text: currentMode.react, key: m.key } });
+    if (isCommand) {
+        const sliced = body.slice(prefix.length).trim();
 
-            if (userSettings?.silent === true) return;
-
-            let finalMessage = currentMode.text;
-
-            // Translation Logic
-            if (lang !== 'en') {
-                const res = await translate(finalMessage, { to: lang });
-                finalMessage = res.text;
-            }
-
-            await sock.sendMessage(m.chat, { text: finalMessage }, { quoted: m });
-
-        } catch (error) {
-            console.error("Alive Error:", error);
-            // Error message also follows the mode style
-            const errOutput = currentMode.err;
-            await sock.sendMessage(m.chat, { text: errOutput });
+        if (sliced) {
+            const parts = sliced.split(/\s+/);
+            cmdNameRaw = (parts.shift() || "").toLowerCase();
+            args = parts;
         }
     }
+
+    // ⚡ ALIAS RESOLVE (FAST MAP SAFE)
+    const cmdName = aliases.get(cmdNameRaw) || cmdNameRaw;
+
+    const messageType = getMessageType(m);
+
+    // ⚡ SAFE USER SETTINGS (NO CRASH)
+    let userSettings = {};
+    try {
+        userSettings = cache?.getUser?.(m.sender) || {};
+    } catch {}
+
+    // ⚡ CONTEXT (LIGHTWEIGHT)
+    const context = {
+        args,
+        userSettings,
+        cache,
+        supabase,
+        commands,
+        prefix
+    };
+
+    // ================= OBSERVER MATCHING =================
+
+    let matchedObservers = null;
+
+    if (Array.isArray(observers) && observers.length > 0) {
+        matchedObservers = [];
+
+        for (let i = 0; i < observers.length; i++) {
+            const obs = observers[i];
+
+            try {
+                if (typeof obs.trigger === "function") {
+                    const shouldRun = obs.trigger(m, {
+                        body,
+                        messageType,
+                        userSettings,
+                        cache
+                    });
+
+                    if (shouldRun) matchedObservers.push(obs);
+                } else {
+                    // fallback (keep original behavior)
+                    matchedObservers.push(obs);
+                }
+            } catch {
+                // silent (no crash)
+            }
+        }
+    }
+
+    // ================= COMMAND =================
+
+    if (isCommand && cmdName) {
+        const command = commands.get(cmdName);
+
+        if (command && typeof command.execute === "function") {
+            return {
+                type: "command",
+                command,
+                context
+            };
+        }
+
+        // ❌ unknown command → silent ignore
+        return { type: "ignore" };
+    }
+
+    // ================= OBSERVERS =================
+
+    if (matchedObservers && matchedObservers.length > 0) {
+        return {
+            type: "observer",
+            list: matchedObservers,
+            context
+        };
+    }
+
+    // ================= DEFAULT =================
+    return { type: "ignore" };
 };
+
+// ================= HELPER =================
+
+function getMessageType(m) {
+    const msg = m.message || {};
+
+    if (msg.protocolMessage) return "protocol";
+    if (msg.viewOnceMessageV2 || msg.viewOnceMessageV2Extension) return "viewOnce";
+    if (msg.imageMessage) return "image";
+    if (msg.videoMessage) return "video";
+    if (msg.audioMessage) return "audio";
+    if (msg.documentMessage) return "document";
+    if (msg.extendedTextMessage || msg.conversation) return "text";
+
+    return "unknown";
+}
