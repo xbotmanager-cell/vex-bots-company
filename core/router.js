@@ -6,66 +6,83 @@ module.exports = async function router(m, ctx) {
         observers,
         cache,
         supabase,
-        prefix // Prefix inayotoka index.js (global.prefix)
+        prefix
     } = ctx;
 
-    // ================= BASIC INFO =================
+    // ================= BASIC =================
 
     const isText = typeof body === "string" && body.length > 0;
 
-    // LUPIN LOGIC: Inatambua prefix yoyote ile (Super Fast)
+    // ⚡ FAST PREFIX CHECK
     const isCommand = isText && body.startsWith(prefix);
-    const commandBody = isCommand ? body.slice(prefix.length).trim() : "";
-    const args = commandBody.split(/ +/);
-    const cmdNameRaw = args.shift()?.toLowerCase();
 
+    let cmdNameRaw = "";
+    let args = [];
+
+    if (isCommand) {
+        const sliced = body.slice(prefix.length).trim();
+
+        if (sliced.length > 0) {
+            const parts = sliced.split(/\s+/);
+            cmdNameRaw = parts.shift()?.toLowerCase() || "";
+            args = parts;
+        }
+    }
+
+    // ⚡ ALIAS RESOLVE (FAST MAP)
     const cmdName = aliases.get(cmdNameRaw) || cmdNameRaw;
 
     const messageType = getMessageType(m);
 
-    const userSettings = cache.getUser(m.sender);
+    // ⚡ SAFE USER SETTINGS
+    let userSettings = {};
+    try {
+        userSettings = cache.getUser?.(m.sender) || {};
+    } catch {}
 
+    // ⚡ CONTEXT (NO HEAVY OBJECTS)
     const context = {
         args,
         userSettings,
         cache,
         supabase,
         commands,
-        prefix // Tunapitisha prefix pia kwenye plugins
+        prefix
     };
 
-    // ================= 1. OBSERVER FILTER =================
+    // ================= OBSERVER MATCHING =================
 
-    const matchedObservers = [];
+    let matchedObservers = null;
 
-    for (const obs of observers) {
-        try {
-            // Each observer defines its own trigger
-            if (typeof obs.trigger === "function") {
-                const shouldRun = obs.trigger(m, {
-                    body,
-                    messageType,
-                    userSettings,
-                    cache
-                });
+    if (observers.length > 0) {
+        matchedObservers = [];
 
-                if (shouldRun) matchedObservers.push(obs);
-            } else {
-                // fallback: run if no trigger defined
-                matchedObservers.push(obs);
-            }
+        for (let i = 0; i < observers.length; i++) {
+            const obs = observers[i];
 
-        } catch (e) {
-            console.error(`Observer Trigger Error:`, e.message);
+            try {
+                if (typeof obs.trigger === "function") {
+                    if (obs.trigger(m, {
+                        body,
+                        messageType,
+                        userSettings,
+                        cache
+                    })) {
+                        matchedObservers.push(obs);
+                    }
+                } else {
+                    matchedObservers.push(obs);
+                }
+            } catch {}
         }
     }
 
-    // ================= 2. COMMAND HANDLING =================
+    // ================= COMMAND =================
 
     if (isCommand && cmdName) {
         const command = commands.get(cmdName);
 
-        if (command) {
+        if (command && typeof command.execute === "function") {
             return {
                 type: "command",
                 command,
@@ -73,13 +90,13 @@ module.exports = async function router(m, ctx) {
             };
         }
 
-        // Unknown command → ignore silently
+        // ❌ unknown command → silent ignore (no crash)
         return { type: "ignore" };
     }
 
-    // ================= 3. OBSERVER EXECUTION =================
+    // ================= OBSERVERS =================
 
-    if (matchedObservers.length > 0) {
+    if (matchedObservers && matchedObservers.length > 0) {
         return {
             type: "observer",
             list: matchedObservers,
@@ -87,18 +104,22 @@ module.exports = async function router(m, ctx) {
         };
     }
 
-    // ================= 4. DEFAULT =================
-
+    // ================= DEFAULT =================
     return { type: "ignore" };
 };
 
 // ================= HELPER =================
 
 function getMessageType(m) {
-    if (m.message?.protocolMessage) return "protocol";
-    if (m.message?.viewOnceMessageV2 || m.message?.viewOnceMessageV2Extension) return "viewOnce";
-    if (m.message?.imageMessage) return "image";
-    if (m.message?.videoMessage) return "video";
-    if (m.message?.extendedTextMessage || m.message?.conversation) return "text";
+    const msg = m.message || {};
+
+    if (msg.protocolMessage) return "protocol";
+    if (msg.viewOnceMessageV2 || msg.viewOnceMessageV2Extension) return "viewOnce";
+    if (msg.imageMessage) return "image";
+    if (msg.videoMessage) return "video";
+    if (msg.audioMessage) return "audio";
+    if (msg.documentMessage) return "document";
+    if (msg.extendedTextMessage || msg.conversation) return "text";
+
     return "unknown";
 }
