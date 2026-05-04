@@ -4,10 +4,10 @@
 // Purpose: Store WhatsApp sessions in Cloud Database instead of local files
 // ========================================================
 
-const { proto } = require("@whiskeysockets/baileys");
-const { BufferJSON } = require("@whiskeysockets/baileys");
-
 module.exports = async (supabase, userId) => {
+    // --- FIX: DYNAMIC IMPORT KWA AJILI YA NODE V22 ---
+    const { proto, BufferJSON } = await import("@whiskeysockets/baileys");
+
     const writeData = async (data, id) => {
         const json = JSON.stringify(data, BufferJSON.replacer);
         await supabase
