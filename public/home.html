@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VEX Dashboard | Server Management</title>
+    <title>VEX Dashboard | Home</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
@@ -63,7 +63,7 @@
 
         .main-view { margin-top: 110px; padding: 25px; max-width: 1200px; margin-left: auto; margin-right: auto; }
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 25px; }
-        .card { background: var(--glass-bg); border: 1px solid var(--glass-border); padding: 30px; border-radius: 24px; }
+        .card { background: var(--glass-bg); border: 1px solid var(--glass-border); padding: 30px; border-radius: 24px; position: relative; }
 
         .vx-balance { font-size: 3rem; font-weight: 600; color: var(--primary-glow); text-shadow: 0 0 15px rgba(168, 85, 247, 0.3); }
         .timer-text { font-family: monospace; color: #ffaa00; font-size: 1.4rem; letter-spacing: 2px; }
@@ -84,9 +84,28 @@
 
         .qr-status-text { text-align: center; font-size: 0.9rem; opacity: 0.7; max-width: 80%; }
         .qr-image-wrapper { background: white; padding: 15px; border-radius: 15px; margin-top: 20px; }
+
+        /* Custom Status Modal */
+        .status-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); z-index: 2000;
+            align-items: center; justify-content: center;
+        }
+        .status-box {
+            background: #0f0f0f; padding: 40px; border-radius: 25px; 
+            border: 1px solid var(--glass-border); text-align: center; max-width: 400px;
+        }
     </style>
 </head>
 <body>
+
+    <div id="status-modal" class="status-overlay">
+        <div class="status-box">
+            <h2 id="modal-title" style="margin-bottom: 15px;">System Update</h2>
+            <p id="modal-msg" style="opacity: 0.7; margin-bottom: 25px;"></p>
+            <button class="btn-action" onclick="closeModal()">Confirm</button>
+        </div>
+    </div>
 
     <nav>
         <div class="menu-toggle" onclick="toggleSidebar()">☰</div>
@@ -96,52 +115,52 @@
             <div class="profile-dropdown" id="profile-drop">
                 <p id="drop-user" style="font-weight: 600; font-size: 1.1rem;"></p>
                 <p id="drop-email" style="font-size: 0.8rem; opacity: 0.5; margin-bottom: 15px;"></p>
-                <p style="font-size: 0.8rem;">Node Status: <span style="color: #00ff00;">Operational</span></p>
-                <button class="btn-action" style="background: #ff4444; margin-top: 20px;" onclick="logout()">Terminate Session</button>
+                <p style="font-size: 0.8rem;">Status: <span style="color: #00ff00;">Online</span></p>
+                <button class="btn-action" style="background: #ff4444; margin-top: 20px;" onclick="logout()">Logout</button>
             </div>
         </div>
     </nav>
 
     <div class="sidebar" id="sidebar">
-        <a href="home.html" class="nav-item active">Infrastructure Overview</a>
-        <a href="my-bots.html" class="nav-item">Active Node Instances</a>
-        <a href="payments.html" class="nav-item">Billing & VX Assets</a>
-        <a href="account.html" class="nav-item">System Identity</a>
-        <a href="settings.html" class="nav-item">Core Configuration</a>
-        <a href="community.html" class="nav-item">VEX Network</a>
+        <a href="home.html" class="nav-item active">Home Dashboard</a>
+        <a href="my-bots.html" class="nav-item">My Bots</a>
+        <a href="payments.html" class="nav-item">Buy Credits</a>
+        <a href="account.html" class="nav-item">Profile</a>
+        <a href="settings.html" class="nav-item">Settings</a>
+        <a href="community.html" class="nav-item">Chat Community</a>
     </div>
 
     <main class="main-view">
-        <h1 style="margin-bottom: 30px; font-weight: 600;">Control Center <span style="opacity:0.3; font-weight:300;">/ Root Access</span></h1>
+        <h1 style="margin-bottom: 30px; font-weight: 600;">Welcome Back, <span id="welcome-name" style="color: var(--primary-glow);">User</span></h1>
         
         <div class="stats-grid">
             <div class="card">
-                <h3>Compute Assets (VX)</h3>
-                <div class="vx-balance" id="vx-amount">20.00</div>
-                <p style="opacity: 0.5;">Available operational fuel</p>
+                <h3>My Credits (VX)</h3>
+                <div class="vx-balance" id="vx-amount">0.00</div>
+                <p style="opacity: 0.5;">Current balance</p>
             </div>
 
             <div class="card">
-                <h3>Next Sync Cycle</h3>
-                <div class="timer-text" id="claim-timer">00:00:00</div>
-                <button class="btn-action" style="margin-top: 20px;" onclick="handleClaim()">Sync Daily VX</button>
+                <h3>Gift Reward</h3>
+                <div class="timer-text" id="claim-timer">23:59:59</div>
+                <button class="btn-action" style="margin-top: 20px;" onclick="handleClaim()">Collect Daily VX</button>
             </div>
         </div>
 
         <div class="card" style="margin-top: 30px;">
-            <h3>Hardware Authentication Tunnel</h3>
-            <p style="opacity: 0.5; margin-bottom: 20px;">Link your WhatsApp instance to VexInstance.js via secure socket bridge.</p>
+            <h3>Bot Connection</h3>
+            <p style="opacity: 0.5; margin-bottom: 20px;">Connect your WhatsApp to start using the system.</p>
             
             <div id="qr-container">
                 <div id="qr-content" class="qr-status-text">
-                    <p id="status-msg">System ready for deployment.</p>
-                    <button class="btn-action" style="width: auto; padding: 15px 50px; margin-top: 20px;" onclick="deployVexInstance()">Initialize Node</button>
+                    <p id="status-msg">Click start to generate connection code.</p>
+                    <button id="deploy-btn" class="btn-action" style="width: auto; padding: 15px 50px; margin-top: 20px;" onclick="deployVexInstance()">Start Connection</button>
                 </div>
             </div>
         </div>
 
         <footer style="margin-top: 60px; text-align: center; opacity: 0.3; font-size: 0.8rem;">
-            Engineered & Maintained by Lupin Starnley Jimmoh. VEX System v2.0.0-PRO.
+            VEX SYSTEM 2026. ALL RIGHTS RESERVED.
         </footer>
     </main>
 
@@ -152,9 +171,22 @@
 
         let user = null;
 
+        function showStatus(title, msg) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-msg').textContent = msg;
+            document.getElementById('status-modal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('status-modal').style.display = 'none';
+        }
+
         window.onload = async () => {
             const { data: { session } } = await vexDB.auth.getSession();
-            if (!session) { window.location.href = "index.html"; return; }
+            if (!session) { 
+                window.location.href = "index.html"; 
+                return; 
+            }
             user = session.user;
             
             initUI();
@@ -164,9 +196,10 @@
         };
 
         function initUI() {
-            const name = user.user_metadata.full_name || "VEX Admin";
+            const name = user.user_metadata.full_name || "Admin";
             document.getElementById('user-initial').textContent = name.charAt(0).toUpperCase();
             document.getElementById('drop-user').textContent = name;
+            document.getElementById('welcome-name').textContent = name;
             document.getElementById('drop-email').textContent = user.email;
         }
 
@@ -175,7 +208,6 @@
             if (data) document.getElementById('vx-amount').textContent = data.vx_balance.toFixed(2);
         }
 
-        // --- CORE LOGIC: LINKING TO VexInstance.js VIA SUPABASE REALTIME ---
         function initRealtimeQR() {
             vexDB.channel('any')
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'M_users', filter: `id=eq.${user.id}` }, payload => {
@@ -189,18 +221,18 @@
         }
 
         function deployVexInstance() {
-            document.getElementById('status-msg').innerHTML = `<span style="color:var(--primary-glow)">[SYSTEM] Sending signal to Lupin's Engine...</span>`;
-            // Trigger VexInstance.js init logic here via edge function or DB flag
+            document.getElementById('status-msg').innerHTML = `<p style="color:var(--primary-glow)">System is starting... Please wait.</p>`;
+            document.getElementById('deploy-btn').style.display = 'none';
         }
 
         function renderSecureQR(qrString) {
             const container = document.getElementById('qr-content');
             container.innerHTML = `
-                <p style="color:#00ff00; font-weight:600;">Handshake Received. Scan to Connect.</p>
+                <p style="color:#00ff00; font-weight:600;">Ready! Scan the code below.</p>
                 <div class="qr-image-wrapper">
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrString)}" alt="VEX QR">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrString)}" alt="QR Code">
                 </div>
-                <p style="margin-top:20px; font-size:0.8rem; opacity:0.5;">Instance ID: ${user.id.substring(0,8)}</p>
+                <p style="margin-top:20px; font-size:0.8rem; opacity:0.5;">Session ID: ${user.id.substring(0,8)}</p>
             `;
         }
 
@@ -218,8 +250,14 @@
             }, 1000);
         }
 
-        async function handleClaim() { alert("VX Injection Successful. Synchronizing ledger..."); }
-        async function logout() { await vexDB.auth.signOut(); window.location.href = "index.html"; }
+        function handleClaim() { 
+            showStatus("Success", "Daily credits have been added to your account."); 
+        }
+
+        async function logout() { 
+            await vexDB.auth.signOut(); 
+            window.location.href = "index.html"; 
+        }
     </script>
 </body>
 </html>
