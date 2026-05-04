@@ -1,5 +1,5 @@
 // ========================================================
-// VEX SYSTEM - MULTI-INSTANCE SMART CACHE
+// VEX SYSTEM - MULTI-INSTANCE SMART CACHE (SQL ALIGNED)
 // Author: Lupin Starnley Jimmoh
 // Purpose: Manages global and per-instance settings with Real-time sync
 // ========================================================
@@ -10,7 +10,7 @@ class VexCache extends EventEmitter {
     constructor() {
         super();
         this.vexSettings = new Map();   // Global system settings
-        this.instanceSettings = new Map(); // Per-user bot settings (Prefix, Bio, etc.)
+        this.instanceSettings = new Map(); // Per-user bot settings (Mapped by M_user_id)
         this.cooldowns = new Map();
         this.ready = false;
     }
@@ -30,30 +30,41 @@ class VexCache extends EventEmitter {
                 });
             }
 
-            // 2. LOAD ALL ACTIVE USER SETTINGS (M_users table)
-            const { data: users } = await supabase.from("M_users").select("*");
+            // 2. LOAD ALL ACTIVE USER DATA (Aligned with M_users and M_settings)
+            const { data: users, error: userError } = await supabase
+                .from("M_users")
+                .select(`
+                    *,
+                    M_settings (*)
+                `);
+
+            if (userError) throw userError;
+
             if (users) {
                 users.forEach(u => {
+                    const userSettings = u.M_settings?.[0] || {};
                     this.instanceSettings.set(u.M_user_id, {
-                        prefix: u.M_prefix || ".",
-                        status: u.M_status || "inactive",
-                        balance: u.M_balance || 0,
-                        expire: u.M_expire_date,
-                        role: u.M_role || "user"
+                        prefix: userSettings.M_prefix || ".",
+                        status: u.M_account_status || "inactive",
+                        balance: u.M_vx_balance || 0,
+                        expire: u.M_subscription_expiry,
+                        tier: u.M_membership_tier || "free",
+                        antidelete: userSettings.M_antidelete || false,
+                        style: userSettings.M_bot_style || "default"
                     });
                 });
             }
 
             this.setupRealtimeSync(supabase);
             this.ready = true;
-            console.log("⚡ CACHE ENGINE: FULLY OPERATIONAL");
+            console.log("⚡ CACHE ENGINE: FULLY OPERATIONAL (SQL SYNCED)");
 
         } catch (e) {
             console.error("CRITICAL CACHE ERROR:", e.message);
         }
     }
 
-    // ================= REALTIME SYNC (The SaaS Magic) =================
+    // ================= REALTIME SYNC (Automated Database Tracking) =================
 
     setupRealtimeSync(supabase) {
         // Sync Global Settings
@@ -64,35 +75,50 @@ class VexCache extends EventEmitter {
                 this.emit("global:update", updated.setting_name);
             }).subscribe();
 
-        // Sync Instance/User Settings (If user changes prefix in DB, bot updates instantly)
-        supabase.channel("instance_sync")
+        // Sync User Account Changes (M_users)
+        supabase.channel("user_sync")
             .on("postgres_changes", { event: "*", schema: "public", table: "M_users" }, payload => {
                 const u = payload.new;
+                const existing = this.instanceSettings.get(u.M_user_id) || {};
                 this.instanceSettings.set(u.M_user_id, {
-                    prefix: u.M_prefix || ".",
-                    status: u.M_status || "inactive",
-                    balance: u.M_balance || 0,
-                    expire: u.M_expire_date,
-                    role: u.M_role || "user"
+                    ...existing,
+                    status: u.M_account_status,
+                    balance: u.M_vx_balance,
+                    expire: u.M_subscription_expiry,
+                    tier: u.M_membership_tier
                 });
                 this.emit("instance:update", u.M_user_id);
             }).subscribe();
+
+        // Sync User Feature Changes (M_settings)
+        supabase.channel("feature_sync")
+            .on("postgres_changes", { event: "*", schema: "public", table: "M_settings" }, payload => {
+                const s = payload.new;
+                const existing = this.instanceSettings.get(s.M_user_id) || {};
+                this.instanceSettings.set(s.M_user_id, {
+                    ...existing,
+                    prefix: s.M_prefix,
+                    antidelete: s.M_antidelete,
+                    style: s.M_bot_style
+                });
+                this.emit("feature:update", s.M_user_id);
+            }).subscribe();
     }
 
-    // ================= GETTERS (Optimized for Speed) =================
+    // ================= GETTERS =================
 
-    // Get a global bot setting
     getGlobal(name) {
         return this.vexSettings.get(name)?.value;
     }
 
-    // Get specific settings for a SaaS Instance (The heart of the router)
     getUser(userId) {
         const defaultSettings = {
             prefix: ".",
             status: "inactive",
             balance: 0,
-            role: "user"
+            tier: "free",
+            antidelete: false,
+            style: "default"
         };
         return this.instanceSettings.get(userId) || defaultSettings;
     }
