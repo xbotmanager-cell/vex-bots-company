@@ -44,6 +44,22 @@
             align-items: center;
         }
 
+        /* Anti-Inspect Overlay */
+        #safety-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            text-align: center;
+        }
+
         .glow-sphere {
             position: absolute;
             width: 400px;
@@ -77,7 +93,6 @@
             text-shadow: 0 0 10px var(--primary-glow);
         }
 
-        /* Hero Section */
         .main-container {
             margin-top: 150px;
             text-align: center;
@@ -100,7 +115,6 @@
             min-height: 50px;
         }
 
-        /* Features Grid */
         .features-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -140,7 +154,6 @@
             box-shadow: 0 0 40px rgba(168, 85, 247, 0.6);
         }
 
-        /* Form Card */
         .glass-card {
             display: none;
             width: 450px;
@@ -210,7 +223,9 @@
         }
     </style>
 </head>
-<body>
+<body oncontextmenu="return false;">
+
+    <div id="safety-overlay"><h1>Access Denied: Inspection Disabled</h1></div>
 
     <div class="glow-sphere" style="top: -100px; left: -100px;"></div>
     <div class="glow-sphere" style="bottom: 100px; right: -100px;"></div>
@@ -220,10 +235,8 @@
         <button class="theme-btn" onclick="toggleTheme()">Switch Appearance</button>
     </header>
 
-    <!-- LANDING HERO -->
     <div id="hero-section" class="main-container">
         <h1 class="hero-title">Automate Your WhatsApp <br> Like a <span style="color: var(--primary-glow)">Pro</span></h1>
-        
         <div class="typing-container" id="typing-text"></div>
 
         <div class="features-grid">
@@ -246,17 +259,14 @@
         </div>
 
         <button class="btn-start" onclick="showForm('signup')">Get Started Now</button>
-        
         <p style="opacity: 0.5; font-size: 0.9rem; max-width: 600px; margin: 0 auto 50px;">
-            VEX is more than just a bot—it is a complete ecosystem designed for developers and business owners who demand reliability, speed, and absolute control over their WhatsApp automation. Join the revolution today.
+            VEX is more than just a bot—it is a complete ecosystem designed for developers and business owners who demand reliability, speed, and absolute control over their WhatsApp automation.
         </p>
     </div>
 
-    <!-- SIGN UP FORM -->
     <div id="signup-card" class="glass-card">
         <h2 style="margin-bottom: 10px; text-align: center;">Join the VEX Elite</h2>
         <p style="text-align: center; opacity: 0.6; margin-bottom: 30px; font-size: 0.9rem;">Start your automation journey in seconds.</p>
-        
         <div class="input-group">
             <label>Username</label>
             <input type="text" id="reg-user" placeholder="Choose a handle">
@@ -273,11 +283,9 @@
         <p class="toggle-text" onclick="showForm('login')">Already a member? <span>Sign In</span></p>
     </div>
 
-    <!-- LOGIN FORM -->
     <div id="login-card" class="glass-card">
         <h2 style="margin-bottom: 10px; text-align: center;">Welcome Back</h2>
         <p style="text-align: center; opacity: 0.6; margin-bottom: 30px; font-size: 0.9rem;">The dashboard is waiting for you.</p>
-        
         <div class="input-group">
             <label>Email Address</label>
             <input type="text" id="log-email" placeholder="email@example.com">
@@ -296,80 +304,55 @@
         const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4a3drYXB4emNtcGpzZWdwYnB2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzA1MTQyMywiZXhwIjoyMDkyNjI3NDIzfQ.cFAslTZh7j30pCLB2r80k7FpPJ3XeWxadTvbQ4hEkhI";
         const vexDB = supabase.createClient(SB_URL, SB_KEY);
 
-        // TYPING EFFECT LOGIC
-        const texts = [
-            "Scale your business with ease.",
-            "Manage 50+ bots from one place.",
-            "Deploy instantly to the cloud.",
-            "Zero maintenance, 100% performance."
-        ];
-        let count = 0;
-        let index = 0;
-        let currentText = "";
-        let letter = "";
+        // ANTI-INSPECT LOGIC
+        document.onkeydown = function(e) {
+            if(e.keyCode == 123 || (e.ctrlKey && e.shiftKey && (e.keyCode == 'I'.charCodeAt(0) || e.keyCode == 'J'.charCodeAt(0) || e.keyCode == 'C'.charCodeAt(0))) || (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0))) {
+                document.getElementById('safety-overlay').style.display = 'flex';
+                return false;
+            }
+        };
+
+        const texts = ["Scale your business.", "Manage 50+ bots.", "Deploy instantly.", "Zero maintenance."];
+        let count = 0, index = 0, currentText = "", letter = "";
 
         (function type() {
             if (count === texts.length) count = 0;
             currentText = texts[count];
             letter = currentText.slice(0, ++index);
             document.getElementById('typing-text').textContent = letter;
-            if (letter.length === currentText.length) {
-                count++;
-                index = 0;
-                setTimeout(type, 2000);
-            } else {
-                setTimeout(type, 100);
-            }
+            if (letter.length === currentText.length) { count++; index = 0; setTimeout(type, 2000); }
+            else { setTimeout(type, 100); }
         }());
 
         function showForm(type) {
             document.getElementById('hero-section').style.display = 'none';
             document.getElementById('signup-card').style.display = 'none';
             document.getElementById('login-card').style.display = 'none';
-
             if(type === 'signup') document.getElementById('signup-card').style.display = 'block';
             if(type === 'login') document.getElementById('login-card').style.display = 'block';
         }
 
-        function toggleTheme() {
-            document.body.classList.toggle('light-mode');
-        }
+        function toggleTheme() { document.body.classList.toggle('light-mode'); }
 
-        // Usajili unaoendana na SQL Schema ya VEX BOT SAAS v2.0
         async function handleSignUp() {
             const email = document.getElementById('reg-email').value;
             const password = document.getElementById('reg-pass').value;
             const username = document.getElementById('reg-user').value;
 
-            if(!email || !password || !username) return alert("All fields are required!");
+            if(!email || !password || !username) return alert("System requires all fields to be populated.");
 
+            // TRIGGER-BASED SIGNUP (No manual insert needed as per SQL Trigger)
             const { data, error } = await vexDB.auth.signUp({
                 email,
                 password,
                 options: { data: { full_name: username } }
             });
 
-            if (error) alert("Error: " + error.message);
-            else {
-                // FIXED: Hapa ndo mabadiliko ya majina ya column yaendane na SQL yako
-                const { error: dbError } = await vexDB
-                    .from('M_users')
-                    .insert([{ 
-                        M_user_id: data.user.id, 
-                        M_username: username, 
-                        M_email: email, 
-                        M_account_status: 'active', // Zamani ilikuwa M_status
-                        M_vx_balance: 20,           // Zamani ilikuwa M_balance
-                        M_membership_tier: 'FREE'   // Imeongezwa kulingana na SQL
-                    }]);
-                
-                if(!dbError) {
-                    alert("Account Verified! Welcome to VEX System.");
-                    window.location.href = "/home.html";
-                } else {
-                    console.error(dbError);
-                    alert("Account created but DB sync failed. Hakikisha RLS Policy imewashwa Supabase.");
-                }
+            if (error) {
+                alert("Security Protocol: " + error.message);
+            } else {
+                alert("Account initialized successfully. Welcome to the VEX ecosystem.");
+                window.location.href = "/home.html";
             }
         }
 
@@ -377,23 +360,19 @@
             const email = document.getElementById('log-email').value;
             const password = document.getElementById('log-pass').value;
 
-            const { data, error } = await vexDB.auth.signInWithPassword({
-                email,
-                password
-            });
+            const { data, error } = await vexDB.auth.signInWithPassword({ email, password });
 
-            if (error) alert("Access Denied: " + error.message);
-            else {
+            if (error) {
+                alert("Authentication Failed: Invalid credentials or restricted access.");
+            } else {
                 window.location.href = "/home.html";
             }
         }
 
         window.onload = async () => {
             const { data: { session } } = await vexDB.auth.getSession();
-            if (session) {
-                window.location.href = "/home.html";
-            }
+            if (session) window.location.href = "/home.html";
         }
     </script>
 </body>
-</html>
+</html>```
