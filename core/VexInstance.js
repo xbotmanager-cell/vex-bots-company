@@ -4,12 +4,6 @@
 // Purpose: Handles individual WhatsApp connections for SaaS users
 // ========================================================
 
-const {
-    default: makeWASocket,
-    DisconnectReason,
-    fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore
-} = require("@whiskeysockets/baileys");
 const pino = require("pino");
 const { createClient } = require("@supabase/supabase-js");
 
@@ -39,6 +33,14 @@ class VexInstance {
     async init() {
         console.log(`[VEX] Initializing Instance for: ${this.userId}`);
 
+        // --- FIX: DYNAMIC IMPORT KWA AJILI YA NODE V22 & BAILEYS ESM ---
+        const { 
+            default: makeWASocket, 
+            DisconnectReason, 
+            fetchLatestBaileysVersion, 
+            makeCacheableSignalKeyStore 
+        } = await import("@whiskeysockets/baileys");
+
         // 1. CLOUD SESSION MANAGEMENT
         const { state, saveCreds } = await this.useSupabaseAuth(this.userId);
         const { version } = await fetchLatestBaileysVersion();
@@ -57,11 +59,12 @@ class VexInstance {
         // Attach custom ID to the sock for identification in router
         this.sock.user_id = this.userId;
 
-        this.registerEvents(saveCreds);
+        // Tunapitisha DisconnectReason kwenye registerEvents
+        this.registerEvents(saveCreds, DisconnectReason);
         return this.sock;
     }
 
-    registerEvents(saveCreds) {
+    registerEvents(saveCreds, DisconnectReason) {
         // --- CREDENTIALS UPDATE ---
         this.sock.ev.on("creds.update", async () => {
             await saveCreds();
