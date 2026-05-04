@@ -1,22 +1,26 @@
 // ========================================================
 // VEX SYSTEM - SUPABASE AUTH PROVIDER (SAAS READY)
 // Author: Lupin Starnley Jimmoh
-// Purpose: Store WhatsApp sessions in Cloud Database instead of local files
+// Purpose: Store WhatsApp sessions in Cloud Database (M_sessions)
 // ========================================================
 
 module.exports = async (supabase, userId) => {
-    // --- FIX: DYNAMIC IMPORT KWA AJILI YA NODE V22 ---
-    const { proto, BufferJSON } = await import("@whiskeysockets/baileys");
+    // --- DYNAMIC IMPORT FOR NODE V22 & BAILEYS PROTO ---
+    const { proto, BufferJSON, initAuthCreds } = await import("@whiskeysockets/baileys");
 
     const writeData = async (data, id) => {
-        const json = JSON.stringify(data, BufferJSON.replacer);
-        await supabase
-            .from("M_sessions")
-            .upsert({ 
-                M_user_id: userId, 
-                M_session_id: id, 
-                M_session_data: json 
-            });
+        try {
+            const json = JSON.stringify(data, BufferJSON.replacer);
+            await supabase
+                .from("M_sessions")
+                .upsert({ 
+                    M_user_id: userId, 
+                    M_session_id: id, 
+                    M_session_data: json 
+                }, { onConflict: 'M_user_id, M_session_id' });
+        } catch (e) {
+            console.error(`[DB ERROR] Failed to write ${id}:`, e.message);
+        }
     };
 
     const readData = async (id) => {
@@ -26,7 +30,7 @@ module.exports = async (supabase, userId) => {
                 .select("M_session_data")
                 .eq("M_user_id", userId)
                 .eq("M_session_id", id)
-                .single();
+                .maybeSingle();
 
             if (error || !data) return null;
             return JSON.parse(data.M_session_data, BufferJSON.reviver);
@@ -36,22 +40,19 @@ module.exports = async (supabase, userId) => {
     };
 
     const removeData = async (id) => {
-        await supabase
-            .from("M_sessions")
-            .delete()
-            .eq("M_user_id", userId)
-            .eq("M_session_id", id);
-    };
-
-    // Initial Creds Loading
-    const creds = await readData("creds") || { 
-        creds: { 
-            registrationId: Math.floor(Math.random() * 65535),
-            noiseKey: { public: Buffer.alloc(32), private: Buffer.alloc(32) },
-            signedIdentityKey: { public: Buffer.alloc(32), private: Buffer.alloc(32) },
-            signedPreKey: { keyPair: { public: Buffer.alloc(32), private: Buffer.alloc(32) }, signature: Buffer.alloc(64), keyId: 1 }
+        try {
+            await supabase
+                .from("M_sessions")
+                .delete()
+                .eq("M_user_id", userId)
+                .eq("M_session_id", id);
+        } catch (e) {
+            console.error(`[DB ERROR] Failed to remove ${id}:`, e.message);
         }
     };
+
+    // --- FIX: INITIALIZE VALID BAILEYS CREDS ---
+    const creds = await readData("creds") || initAuthCreds();
 
     return {
         state: {
