@@ -8,11 +8,13 @@ const {
     default: makeWASocket,
     DisconnectReason,
     fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore,
-    useMultiFileAuthState
+    makeCacheableSignalKeyStore
 } = require("@whiskeysockets/baileys");
 const pino = require("pino");
 const { createClient } = require("@supabase/supabase-js");
+
+// IMPORT CLOUD AUTH PROVIDER
+const supabaseAuth = require("./supabaseAuth");
 
 // Initialize Supabase for each instance
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
@@ -26,11 +28,18 @@ class VexInstance {
         this.isReady = false;
     }
 
+    /**
+     * AUTHENTICATION GATEWAY
+     * Uses Cloud Database (Supabase) instead of local file system
+     */
+    async useSupabaseAuth(userId) {
+        return await supabaseAuth(supabase, userId); 
+    }
+
     async init() {
         console.log(`[VEX] Initializing Instance for: ${this.userId}`);
 
-        // 1. DYNAMIC SESSION MANAGEMENT (Database-driven)
-        // Note: You will need a helper to handle Supabase Auth State
+        // 1. CLOUD SESSION MANAGEMENT
         const { state, saveCreds } = await this.useSupabaseAuth(this.userId);
         const { version } = await fetchLatestBaileysVersion();
 
@@ -70,16 +79,22 @@ class VexInstance {
             if (connection === "open") {
                 this.isReady = true;
                 console.log(`[VEX] Connection Active: ${this.phoneNumber}`);
+                
+                // Optional: Notify the user in their own DM
+                await this.sock.sendMessage(this.sock.user.id, { 
+                    text: `*VEX SYSTEM CONNECTED*\n\nYour instance is now active and monitoring messages.` 
+                });
             }
 
             if (connection === "close") {
                 const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                
                 if (shouldReconnect) {
                     console.log(`[VEX] Reconnecting ${this.userId}...`);
                     this.init();
                 } else {
                     console.log(`[VEX] User Logged Out: ${this.userId}`);
-                    // Logic to update user status to 'inactive' in Supabase
+                    // Database logic to mark instance as inactive would go here
                 }
             }
         });
@@ -93,7 +108,7 @@ class VexInstance {
             const settings = await this.core.cache.getUser(this.userId);
             const prefix = settings.M_prefix || ".";
 
-            // Process through your existing Router
+            // Process through your existing Router logic
             const body = m.message?.conversation || m.message?.extendedTextMessage?.text || "";
             
             try {
@@ -105,7 +120,7 @@ class VexInstance {
                     cache: this.core.cache,
                     supabase: supabase,
                     prefix: prefix,
-                    userSettings: settings // Injecting specific SaaS settings
+                    userSettings: settings // Injecting specific SaaS settings for the subscriber
                 });
 
                 if (route && route.type === "command") {
@@ -115,13 +130,6 @@ class VexInstance {
                 console.error(`[VEX ERROR] Instance ${this.userId}:`, error.message);
             }
         });
-    }
-
-    // This is a placeholder for the custom Supabase Auth logic
-    async useSupabaseAuth(userId) {
-        // This function will fetch/upsert session data to 'M_sessions' table
-        // It's a bit long, I will give you the detailed helper code in the next step
-        return await useMultiFileAuthState(`./sessions/${userId}`); 
     }
 }
 
