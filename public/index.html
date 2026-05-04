@@ -291,10 +291,10 @@
     </div>
 
     <script>
-        // SUPABASE CONFIG - FIXED CLIENT CALL
+        // SUPABASE CONFIG - FIXED CLIENT CALL (Error 1 Fixed)
         const SB_URL = "https://rxkwkapxzcmpjsegpbpv.supabase.co";
         const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4a3drYXB4emNtcGpzZWdwYnB2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzA1MTQyMywiZXhwIjoyMDkyNjI3NDIzfQ.cFAslTZh7j30pCLB2r80k7FpPJ3XeWxadTvbQ4hEkhI";
-        const supabase = supabase.createClient(SB_URL, SB_KEY);
+        const vexDB = supabase.createClient(SB_URL, SB_KEY);
 
         // TYPING EFFECT LOGIC
         const texts = [
@@ -322,7 +322,7 @@
             }
         }());
 
-        // UI NAVIGATION
+        // UI NAVIGATION (Error 2 Fixed automatically)
         function showForm(type) {
             document.getElementById('hero-section').style.display = 'none';
             document.getElementById('signup-card').style.display = 'none';
@@ -332,7 +332,7 @@
             if(type === 'login') document.getElementById('login-card').style.display = 'block';
         }
 
-        // THEME TOGGLE
+        // THEME TOGGLE (Error 3 Fixed automatically)
         function toggleTheme() {
             document.body.classList.toggle('light-mode');
         }
@@ -345,7 +345,7 @@
 
             if(!email || !password || !username) return alert("All fields are required!");
 
-            const { data, error } = await supabase.auth.signUp({
+            const { data, error } = await vexDB.auth.signUp({
                 email,
                 password,
                 options: { data: { full_name: username } }
@@ -353,7 +353,7 @@
 
             if (error) alert("Error: " + error.message);
             else {
-                const { error: dbError } = await supabase
+                const { error: dbError } = await vexDB
                     .from('M_users')
                     .insert([{ 
                         M_user_id: data.user.id, 
@@ -377,7 +377,7 @@
             const email = document.getElementById('log-email').value;
             const password = document.getElementById('log-pass').value;
 
-            const { data, error } = await supabase.auth.signInWithPassword({
+            const { data, error } = await vexDB.auth.signInWithPassword({
                 email,
                 password
             });
@@ -390,7 +390,7 @@
 
         // REDIRECT IF LOGGED IN
         window.onload = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
+            const { data: { session } } = await vexDB.auth.getSession();
             if (session) {
                 window.location.href = "/home.html";
             }
