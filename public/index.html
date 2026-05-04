@@ -246,12 +246,10 @@
                 <h3>Secure Terminal</h3>
                 <p>Encrypted access protocols protect your private session data from unauthorized intrusions.</p>
             </div>
-            <!-- Added Feature 1 -->
             <div class="feature-item">
                 <h3>Auto-Scaling</h3>
                 <p>Resources expand automatically during peak traffic to maintain optimal performance levels.</p>
             </div>
-            <!-- Added Feature 2 -->
             <div class="feature-item">
                 <h3>Direct API Link</h3>
                 <p>Seamless integration with external endpoints for real-time data synchronization across nodes.</p>
@@ -279,7 +277,8 @@
             <label>Access Key (Password)</label>
             <input type="password" id="reg-pass" placeholder="Create a secure key">
         </div>
-        <button class="btn-start" style="width: 100%; margin-bottom: 0;" onclick="handleSignUp()">Deploy Account</button>
+        <button id="signup-btn" class="btn-start" style="width: 100%; margin-bottom: 0;" onclick="handleSignUp()">Deploy Account</button>
+        <button id="next-btn-signup" class="btn-start" style="width: 100%; margin-bottom: 0; display: none;" onclick="navigateToHome()">Proceed to Dashboard</button>
         <p class="toggle-text" onclick="showForm('login')">Already registered? <span>Sign In</span></p>
     </div>
 
@@ -294,7 +293,8 @@
             <label>Access Key</label>
             <input type="password" id="log-pass" placeholder="••••••••">
         </div>
-        <button class="btn-start" style="width: 100%; margin-bottom: 0;" onclick="handleLogin()">Authenticate Access</button>
+        <button id="login-btn" class="btn-start" style="width: 100%; margin-bottom: 0;" onclick="handleLogin()">Authenticate Access</button>
+        <button id="next-btn-login" class="btn-start" style="width: 100%; margin-bottom: 0; display: none;" onclick="navigateToHome()">Enter Dashboard</button>
         <p class="toggle-text" onclick="showForm('signup')">Need a node? <span>Register Account</span></p>
     </div>
 
@@ -346,8 +346,9 @@
             if (error) {
                 alert("Protocol Error: " + error.message);
             } else {
-                alert("Node provisioned successfully. Welcome to VEX HOST.");
-                window.location.href = "/home.html";
+                alert("Node provisioned successfully. Master Identity: " + username);
+                document.getElementById('signup-btn').style.display = 'none';
+                document.getElementById('next-btn-signup').style.display = 'block';
             }
         }
 
@@ -360,13 +361,21 @@
             if (error) {
                 alert("Access Denied: Administrative credentials rejected.");
             } else {
-                window.location.href = "/home.html";
+                alert("Authentication Successful. Ready for terminal access.");
+                document.getElementById('login-btn').style.display = 'none';
+                document.getElementById('next-btn-login').style.display = 'block';
             }
         }
 
+        function navigateToHome() {
+            window.location.href = "home.html";
+        }
+
+        // Automatic Redirection Shield
         window.onload = async () => {
             const { data: { session } } = await vexDB.auth.getSession();
-            if (session) window.location.href = "/home.html";
+            // System will NOT redirect automatically to home.html if session exists
+            // This ensures manual user control via UI prompts
         }
     </script>
 </body>
