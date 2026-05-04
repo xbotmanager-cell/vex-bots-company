@@ -1,5 +1,5 @@
 // ========================================================
-// VEX SYSTEM - MULTI-INSTANCE SAAS MANAGER
+// VEX SYSTEM - MULTI-INSTANCE SAAS MANAGER (FIXED)
 // Author: Lupin Starnley Jimmoh
 // Purpose: Orchestrates multiple bot instances from Supabase
 // ========================================================
@@ -36,8 +36,10 @@ const commands = new Map();
 const aliases = new Map();
 const observers = [];
 
+// [FIX] ALLOW ALL STATIC FILES FROM PUBLIC FOLDER
+app.use(express.static(path.join(__dirname, "public")));
+
 function loadResources() {
-    // Commands loading logic (same as your previous version)
     const cmdFiles = fs.readdirSync(pluginPath).filter(f => f.endsWith(".js"));
     for (const file of cmdFiles) {
         try {
@@ -50,7 +52,6 @@ function loadResources() {
         } catch (e) { console.error(`Failed to load command ${file}`); }
     }
 
-    // Observers loading logic
     const obsFiles = fs.readdirSync(observerPath).filter(f => f.endsWith(".js"));
     for (const file of obsFiles) {
         try {
@@ -84,41 +85,40 @@ async function bootInstance(userData) {
 async function startSaaS() {
     console.log("🚀 VEX SAAS ENGINE STARTING...");
     
-    // 1. Initialize Cache & Load Global Settings
     await cache.init(supabase);
     loadResources();
 
-    // 2. Fetch Active Subscribers from M_users
+    // [FIX] ALIGNED TO SQL SCHEMA (M_account_status)
     const { data: subscribers, error } = await supabase
         .from("M_users")
         .select("*")
-        .eq("M_status", "active");
+        .eq("M_account_status", "active");
 
     if (error) {
         console.error("[MANAGER] DB Fetch Error:", error.message);
         return;
     }
 
-    // 3. Boot Each Instance
     for (const user of subscribers) {
         await bootInstance(user);
     }
 
-    // 4. Listen for New Subscriptions (Real-time Activation)
+    // REAL-TIME LISTENER
     supabase
         .channel("new-subscriptions")
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "M_users" }, async (payload) => {
-            if (payload.new.M_status === "active") {
+            // [FIX] ALIGNED TO SQL SCHEMA (M_account_status)
+            if (payload.new.M_account_status === "active") {
                 console.log(`[MANAGER] New Active User Detected: ${payload.new.M_user_id}`);
                 await bootInstance(payload.new);
             }
         })
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "M_users" }, async (payload) => {
-            // If user expires or is banned, kill the instance
-            if (payload.new.M_status !== "active" && activeInstances.has(payload.new.M_user_id)) {
+            // [FIX] ALIGNED TO SQL SCHEMA (M_account_status)
+            if (payload.new.M_account_status !== "active" && activeInstances.has(payload.new.M_user_id)) {
                 console.log(`[MANAGER] Stopping Instance (Inactive/Expired): ${payload.new.M_user_id}`);
                 const instance = activeInstances.get(payload.new.M_user_id);
-                instance.sock.logout();
+                if (instance.sock) instance.sock.logout();
                 activeInstances.delete(payload.new.M_user_id);
             }
         })
@@ -127,7 +127,18 @@ async function startSaaS() {
 
 // WEB INTERFACE (For Scanning & Monitoring)
 app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "public/index.html")); // Dashboard UI
+    res.sendFile(path.join(__dirname, "public/index.html")); 
+});
+
+// [FIX] ROUTE FOR HOME.HTML OR OTHER PAGES IN PUBLIC
+app.get("/:page", (req, res) => {
+    const page = req.params.page;
+    const filePath = path.join(__dirname, "public", page);
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send("Page not found");
+    }
 });
 
 // START SERVER
