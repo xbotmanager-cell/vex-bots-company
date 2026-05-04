@@ -291,7 +291,7 @@
     </div>
 
     <script>
-        // SUPABASE CONFIG - FIXED CLIENT CALL (Error 1 Fixed)
+        // SUPABASE CONFIG
         const SB_URL = "https://rxkwkapxzcmpjsegpbpv.supabase.co";
         const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4a3drYXB4emNtcGpzZWdwYnB2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzA1MTQyMywiZXhwIjoyMDkyNjI3NDIzfQ.cFAslTZh7j30pCLB2r80k7FpPJ3XeWxadTvbQ4hEkhI";
         const vexDB = supabase.createClient(SB_URL, SB_KEY);
@@ -322,7 +322,6 @@
             }
         }());
 
-        // UI NAVIGATION (Error 2 Fixed automatically)
         function showForm(type) {
             document.getElementById('hero-section').style.display = 'none';
             document.getElementById('signup-card').style.display = 'none';
@@ -332,12 +331,11 @@
             if(type === 'login') document.getElementById('login-card').style.display = 'block';
         }
 
-        // THEME TOGGLE (Error 3 Fixed automatically)
         function toggleTheme() {
             document.body.classList.toggle('light-mode');
         }
 
-        // SIGN UP LOGIC
+        // Usajili unaoendana na SQL Schema ya VEX BOT SAAS v2.0
         async function handleSignUp() {
             const email = document.getElementById('reg-email').value;
             const password = document.getElementById('reg-pass').value;
@@ -353,26 +351,28 @@
 
             if (error) alert("Error: " + error.message);
             else {
+                // FIXED: Hapa ndo mabadiliko ya majina ya column yaendane na SQL yako
                 const { error: dbError } = await vexDB
                     .from('M_users')
                     .insert([{ 
                         M_user_id: data.user.id, 
                         M_username: username, 
                         M_email: email, 
-                        M_status: 'inactive',
-                        M_balance: 0 
+                        M_account_status: 'active', // Zamani ilikuwa M_status
+                        M_vx_balance: 20,           // Zamani ilikuwa M_balance
+                        M_membership_tier: 'FREE'   // Imeongezwa kulingana na SQL
                     }]);
                 
                 if(!dbError) {
-                    alert("Account Verified! Welcome to VEX.");
+                    alert("Account Verified! Welcome to VEX System.");
                     window.location.href = "/home.html";
                 } else {
-                    alert("Account created but DB sync failed. Please contact support.");
+                    console.error(dbError);
+                    alert("Account created but DB sync failed. Hakikisha RLS Policy imewashwa Supabase.");
                 }
             }
         }
 
-        // LOGIN LOGIC
         async function handleLogin() {
             const email = document.getElementById('log-email').value;
             const password = document.getElementById('log-pass').value;
@@ -388,7 +388,6 @@
             }
         }
 
-        // REDIRECT IF LOGGED IN
         window.onload = async () => {
             const { data: { session } } = await vexDB.auth.getSession();
             if (session) {
