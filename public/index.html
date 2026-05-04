@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VEX HOST | Cloud Automation</title>
+    <!-- Supabase JS Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-glow: #a855f7;
+            --bg-color: #050505;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-color: #ffffff;
+            --card-radius: 20px;
+        }
+
+        /* Light Mode Logic */
+        body.light-mode {
+            --bg-color: #f0f0f0;
+            --text-color: #1a1a1a;
+            --glass-bg: rgba(0, 0, 0, 0.05);
+            --glass-border: rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+            transition: all 0.3s ease;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow-x: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Background Glow Objects */
+        .glow-sphere {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background: var(--primary-glow);
+            filter: blur(150px);
+            opacity: 0.2;
+            z-index: -1;
+            border-radius: 50%;
+        }
+
+        /* Header / Brand */
+        header {
+            position: fixed;
+            top: 20px;
+            width: 90%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(15px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--card-radius);
+            z-index: 100;
+        }
+
+        .brand {
+            font-weight: 600;
+            font-size: 1.5rem;
+            color: var(--primary-glow);
+            text-shadow: 0 0 10px var(--primary-glow);
+        }
+
+        /* Hero / Main Section */
+        .main-container {
+            text-align: center;
+            max-width: 600px;
+            z-index: 10;
+        }
+
+        .hero-title {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .btn-start {
+            padding: 15px 40px;
+            background: var(--primary-glow);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+        }
+
+        .btn-start:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(168, 85, 247, 0.6);
+        }
+
+        /* Glass Form Containers */
+        .glass-card {
+            display: none; /* Hidden by default */
+            width: 400px;
+            padding: 40px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--card-radius);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            animation: slideUp 0.5s ease;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: var(--text-color);
+            outline: none;
+        }
+
+        .input-group input:focus {
+            border-color: var(--primary-glow);
+        }
+
+        .toggle-text {
+            margin-top: 20px;
+            font-size: 0.85rem;
+            opacity: 0.7;
+            cursor: pointer;
+        }
+
+        .toggle-text span {
+            color: var(--primary-glow);
+            font-weight: 600;
+        }
+
+        /* Theme Switcher */
+        .theme-btn {
+            background: none;
+            border: 1px solid var(--glass-border);
+            color: var(--text-color);
+            padding: 5px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        /* Hidden Utility */
+        .hidden { display: none; }
+        .visible { display: block; }
+
+    </style>
+</head>
+<body>
+
+    <div class="glow-sphere" style="top: 10%; left: 10%;"></div>
+    <div class="glow-sphere" style="bottom: 10%; right: 10%;"></div>
+
+    <header>
+        <div class="brand">VEX HOST</div>
+        <button class="theme-btn" onclick="toggleTheme()">Toggle Mode</button>
+    </header>
+
+    <!-- LANDING HERO -->
+    <div id="hero-section" class="main-container">
+        <h1 class="hero-title">Experience the Power of <span style="color: var(--primary-glow)">VEX</span></h1>
+        <p style="margin-bottom: 30px; opacity: 0.7;">The ultimate Multi-Instance WhatsApp automation system. Secure, Fast, Cloud-Based.</p>
+        <button class="btn-start" onclick="showForm('signup')">Start Today</button>
+    </div>
+
+    <!-- SIGN UP FORM -->
+    <div id="signup-card" class="glass-card">
+        <h2 style="margin-bottom: 20px;">Create Account</h2>
+        <div class="input-group">
+            <label>Username</label>
+            <input type="text" id="reg-user" placeholder="Enter username">
+        </div>
+        <div class="input-group">
+            <label>Email Address</label>
+            <input type="email" id="reg-email" placeholder="email@example.com">
+        </div>
+        <div class="input-group">
+            <label>Password</label>
+            <input type="password" id="reg-pass" placeholder="••••••••">
+        </div>
+        <button class="btn-start" style="width: 100%;" onclick="handleSignUp()">Sign Up Now</button>
+        <p class="toggle-text" onclick="showForm('login')">Already have an account? <span>Sign In</span></p>
+    </div>
+
+    <!-- LOGIN FORM -->
+    <div id="login-card" class="glass-card">
+        <h2 style="margin-bottom: 20px;">Welcome Back</h2>
+        <div class="input-group">
+            <label>Email or Username</label>
+            <input type="text" id="log-email" placeholder="email@example.com">
+        </div>
+        <div class="input-group">
+            <label>Password</label>
+            <input type="password" id="log-pass" placeholder="••••••••">
+        </div>
+        <button class="btn-start" style="width: 100%;" onclick="handleLogin()">Sign In</button>
+        <p class="toggle-text" onclick="showForm('signup')">Don't have an account? <span>Register</span></p>
+    </div>
+
+    <script>
+        // SUPABASE CONFIG
+        const SB_URL = "https://rxkwkapxzcmpjsegpbpv.supabase.co";
+        const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4a3drYXB4emNtcGpzZWdwYnB2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzA1MTQyMywiZXhwIjoyMDkyNjI3NDIzfQ.cFAslTZh7j30pCLB2r80k7FpPJ3XeWxadTvbQ4hEkhI";
+        const supabase = supabase.createClient(SB_URL, SB_KEY);
+
+        // UI NAVIGATION
+        function showForm(type) {
+            document.getElementById('hero-section').style.display = 'none';
+            document.getElementById('signup-card').style.display = 'none';
+            document.getElementById('login-card').style.display = 'none';
+
+            if(type === 'signup') document.getElementById('signup-card').style.display = 'block';
+            if(type === 'login') document.getElementById('login-card').style.display = 'block';
+        }
+
+        // THEME TOGGLE
+        function toggleTheme() {
+            document.body.classList.toggle('light-mode');
+        }
+
+        // SIGN UP LOGIC (No Email Verification)
+        async function handleSignUp() {
+            const email = document.getElementById('reg-email').value;
+            const password = document.getElementById('reg-pass').value;
+            const username = document.getElementById('reg-user').value;
+
+            if(!email || !password || !username) return alert("Please fill all fields!");
+
+            const { data, error } = await supabase.auth.signUp({
+                email,
+                password,
+                options: { data: { full_name: username } }
+            });
+
+            if (error) alert("Error: " + error.message);
+            else {
+                // Auto-Verify logic: Direct insert into M_users since we trust the user
+                const { error: dbError } = await supabase
+                    .from('M_users')
+                    .insert([{ 
+                        M_user_id: data.user.id, 
+                        M_username: username, 
+                        M_email: email, 
+                        M_status: 'inactive',
+                        M_balance: 0 
+                    }]);
+                
+                if(!dbError) {
+                    alert("Account Created! Redirecting to Dashboard...");
+                    window.location.href = "/home.html";
+                }
+            }
+        }
+
+        // LOGIN LOGIC
+        async function handleLogin() {
+            const email = document.getElementById('log-email').value;
+            const password = document.getElementById('log-pass').value;
+
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email,
+                password
+            });
+
+            if (error) alert("Login Failed: " + error.message);
+            else {
+                window.location.href = "/home.html";
+            }
+        }
+
+        // REDIRECT IF LOGGED IN
+        window.onload = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                window.location.href = "/home.html";
+            }
+        }
+    </script>
+</body>
+</html>
