@@ -19,7 +19,6 @@
             --card-radius: 20px;
         }
 
-        /* Light Mode Logic */
         body.light-mode {
             --bg-color: #f0f0f0;
             --text-color: #1a1a1a;
@@ -39,25 +38,23 @@
             background-color: var(--bg-color);
             color: var(--text-color);
             overflow-x: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
             min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
-        /* Background Glow Objects */
         .glow-sphere {
             position: absolute;
-            width: 300px;
-            height: 300px;
+            width: 400px;
+            height: 400px;
             background: var(--primary-glow);
-            filter: blur(150px);
-            opacity: 0.2;
+            filter: blur(180px);
+            opacity: 0.15;
             z-index: -1;
             border-radius: 50%;
         }
 
-        /* Header / Brand */
         header {
             position: fixed;
             top: 20px;
@@ -80,42 +77,77 @@
             text-shadow: 0 0 10px var(--primary-glow);
         }
 
-        /* Hero / Main Section */
+        /* Hero Section */
         .main-container {
+            margin-top: 150px;
             text-align: center;
-            max-width: 600px;
+            max-width: 800px;
+            padding: 20px;
             z-index: 10;
         }
 
         .hero-title {
-            font-size: 3rem;
+            font-size: 3.5rem;
             margin-bottom: 20px;
+            line-height: 1.2;
             font-weight: 600;
         }
 
+        .typing-container {
+            font-size: 1.2rem;
+            opacity: 0.8;
+            margin-bottom: 40px;
+            min-height: 50px;
+        }
+
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 40px 0;
+            width: 100%;
+        }
+
+        .feature-item {
+            padding: 25px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 15px;
+            text-align: left;
+        }
+
+        .feature-item h3 {
+            color: var(--primary-glow);
+            margin-bottom: 10px;
+        }
+
         .btn-start {
-            padding: 15px 40px;
+            padding: 18px 50px;
             background: var(--primary-glow);
             color: white;
             border: none;
             border-radius: 50px;
-            font-size: 1.1rem;
+            font-size: 1.2rem;
+            font-weight: 600;
             cursor: pointer;
-            box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+            box-shadow: 0 0 25px rgba(168, 85, 247, 0.4);
+            margin-bottom: 50px;
         }
 
         .btn-start:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 30px rgba(168, 85, 247, 0.6);
+            transform: translateY(-5px);
+            box-shadow: 0 0 40px rgba(168, 85, 247, 0.6);
         }
 
-        /* Glass Form Containers */
+        /* Form Card */
         .glass-card {
-            display: none; /* Hidden by default */
-            width: 400px;
+            display: none;
+            width: 450px;
+            margin: 100px auto;
             padding: 40px;
             background: var(--glass-bg);
-            backdrop-filter: blur(20px);
+            backdrop-filter: blur(25px);
             border: 1px solid var(--glass-border);
             border-radius: var(--card-radius);
             box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
@@ -151,6 +183,7 @@
 
         .input-group input:focus {
             border-color: var(--primary-glow);
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.2);
         }
 
         .toggle-text {
@@ -158,6 +191,7 @@
             font-size: 0.85rem;
             opacity: 0.7;
             cursor: pointer;
+            text-align: center;
         }
 
         .toggle-text span {
@@ -165,78 +199,128 @@
             font-weight: 600;
         }
 
-        /* Theme Switcher */
         .theme-btn {
             background: none;
             border: 1px solid var(--glass-border);
             color: var(--text-color);
-            padding: 5px 15px;
+            padding: 8px 20px;
             border-radius: 20px;
             cursor: pointer;
+            font-size: 0.8rem;
         }
-
-        /* Hidden Utility */
-        .hidden { display: none; }
-        .visible { display: block; }
-
     </style>
 </head>
 <body>
 
-    <div class="glow-sphere" style="top: 10%; left: 10%;"></div>
-    <div class="glow-sphere" style="bottom: 10%; right: 10%;"></div>
+    <div class="glow-sphere" style="top: -100px; left: -100px;"></div>
+    <div class="glow-sphere" style="bottom: 100px; right: -100px;"></div>
 
     <header>
         <div class="brand">VEX HOST</div>
-        <button class="theme-btn" onclick="toggleTheme()">Toggle Mode</button>
+        <button class="theme-btn" onclick="toggleTheme()">Switch Appearance</button>
     </header>
 
     <!-- LANDING HERO -->
     <div id="hero-section" class="main-container">
-        <h1 class="hero-title">Experience the Power of <span style="color: var(--primary-glow)">VEX</span></h1>
-        <p style="margin-bottom: 30px; opacity: 0.7;">The ultimate Multi-Instance WhatsApp automation system. Secure, Fast, Cloud-Based.</p>
-        <button class="btn-start" onclick="showForm('signup')">Start Today</button>
+        <h1 class="hero-title">Automate Your WhatsApp <br> Like a <span style="color: var(--primary-glow)">Pro</span></h1>
+        
+        <div class="typing-container" id="typing-text"></div>
+
+        <div class="features-grid">
+            <div class="feature-item">
+                <h3>Multi-Instance</h3>
+                <p>Run dozens of bots simultaneously under one powerful cloud dashboard with zero lag.</p>
+            </div>
+            <div class="feature-item">
+                <h3>SaaS Ready</h3>
+                <p>Built for scale. Integrated Supabase storage means your sessions are safe in the cloud forever.</p>
+            </div>
+            <div class="feature-item">
+                <h3>24/7 Uptime</h3>
+                <p>Your bots never sleep. Hosted on high-performance nodes with automated recovery systems.</p>
+            </div>
+            <div class="feature-item">
+                <h3>Encrypted Tech</h3>
+                <p>End-to-end security using the latest Baileys socket protocols. Your data is your business.</p>
+            </div>
+        </div>
+
+        <button class="btn-start" onclick="showForm('signup')">Get Started Now</button>
+        
+        <p style="opacity: 0.5; font-size: 0.9rem; max-width: 600px; margin: 0 auto 50px;">
+            VEX is more than just a bot—it is a complete ecosystem designed for developers and business owners who demand reliability, speed, and absolute control over their WhatsApp automation. Join the revolution today.
+        </p>
     </div>
 
     <!-- SIGN UP FORM -->
     <div id="signup-card" class="glass-card">
-        <h2 style="margin-bottom: 20px;">Create Account</h2>
+        <h2 style="margin-bottom: 10px; text-align: center;">Join the VEX Elite</h2>
+        <p style="text-align: center; opacity: 0.6; margin-bottom: 30px; font-size: 0.9rem;">Start your automation journey in seconds.</p>
+        
         <div class="input-group">
             <label>Username</label>
-            <input type="text" id="reg-user" placeholder="Enter username">
+            <input type="text" id="reg-user" placeholder="Choose a handle">
         </div>
         <div class="input-group">
             <label>Email Address</label>
-            <input type="email" id="reg-email" placeholder="email@example.com">
+            <input type="email" id="reg-email" placeholder="you@company.com">
         </div>
         <div class="input-group">
             <label>Password</label>
-            <input type="password" id="reg-pass" placeholder="••••••••">
+            <input type="password" id="reg-pass" placeholder="Create a strong password">
         </div>
-        <button class="btn-start" style="width: 100%;" onclick="handleSignUp()">Sign Up Now</button>
-        <p class="toggle-text" onclick="showForm('login')">Already have an account? <span>Sign In</span></p>
+        <button class="btn-start" style="width: 100%; margin-bottom: 0;" onclick="handleSignUp()">Create Account</button>
+        <p class="toggle-text" onclick="showForm('login')">Already a member? <span>Sign In</span></p>
     </div>
 
     <!-- LOGIN FORM -->
     <div id="login-card" class="glass-card">
-        <h2 style="margin-bottom: 20px;">Welcome Back</h2>
+        <h2 style="margin-bottom: 10px; text-align: center;">Welcome Back</h2>
+        <p style="text-align: center; opacity: 0.6; margin-bottom: 30px; font-size: 0.9rem;">The dashboard is waiting for you.</p>
+        
         <div class="input-group">
-            <label>Email or Username</label>
+            <label>Email Address</label>
             <input type="text" id="log-email" placeholder="email@example.com">
         </div>
         <div class="input-group">
             <label>Password</label>
             <input type="password" id="log-pass" placeholder="••••••••">
         </div>
-        <button class="btn-start" style="width: 100%;" onclick="handleLogin()">Sign In</button>
-        <p class="toggle-text" onclick="showForm('signup')">Don't have an account? <span>Register</span></p>
+        <button class="btn-start" style="width: 100%; margin-bottom: 0;" onclick="handleLogin()">Sign In</button>
+        <p class="toggle-text" onclick="showForm('signup')">New here? <span>Register Account</span></p>
     </div>
 
     <script>
-        // SUPABASE CONFIG
+        // SUPABASE CONFIG - FIXED CLIENT CALL
         const SB_URL = "https://rxkwkapxzcmpjsegpbpv.supabase.co";
         const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4a3drYXB4emNtcGpzZWdwYnB2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzA1MTQyMywiZXhwIjoyMDkyNjI3NDIzfQ.cFAslTZh7j30pCLB2r80k7FpPJ3XeWxadTvbQ4hEkhI";
         const supabase = supabase.createClient(SB_URL, SB_KEY);
+
+        // TYPING EFFECT LOGIC
+        const texts = [
+            "Scale your business with ease.",
+            "Manage 50+ bots from one place.",
+            "Deploy instantly to the cloud.",
+            "Zero maintenance, 100% performance."
+        ];
+        let count = 0;
+        let index = 0;
+        let currentText = "";
+        let letter = "";
+
+        (function type() {
+            if (count === texts.length) count = 0;
+            currentText = texts[count];
+            letter = currentText.slice(0, ++index);
+            document.getElementById('typing-text').textContent = letter;
+            if (letter.length === currentText.length) {
+                count++;
+                index = 0;
+                setTimeout(type, 2000);
+            } else {
+                setTimeout(type, 100);
+            }
+        }());
 
         // UI NAVIGATION
         function showForm(type) {
@@ -253,13 +337,13 @@
             document.body.classList.toggle('light-mode');
         }
 
-        // SIGN UP LOGIC (No Email Verification)
+        // SIGN UP LOGIC
         async function handleSignUp() {
             const email = document.getElementById('reg-email').value;
             const password = document.getElementById('reg-pass').value;
             const username = document.getElementById('reg-user').value;
 
-            if(!email || !password || !username) return alert("Please fill all fields!");
+            if(!email || !password || !username) return alert("All fields are required!");
 
             const { data, error } = await supabase.auth.signUp({
                 email,
@@ -269,7 +353,6 @@
 
             if (error) alert("Error: " + error.message);
             else {
-                // Auto-Verify logic: Direct insert into M_users since we trust the user
                 const { error: dbError } = await supabase
                     .from('M_users')
                     .insert([{ 
@@ -281,8 +364,10 @@
                     }]);
                 
                 if(!dbError) {
-                    alert("Account Created! Redirecting to Dashboard...");
+                    alert("Account Verified! Welcome to VEX.");
                     window.location.href = "/home.html";
+                } else {
+                    alert("Account created but DB sync failed. Please contact support.");
                 }
             }
         }
@@ -297,7 +382,7 @@
                 password
             });
 
-            if (error) alert("Login Failed: " + error.message);
+            if (error) alert("Access Denied: " + error.message);
             else {
                 window.location.href = "/home.html";
             }
