@@ -1,7 +1,7 @@
 // ========================================================
-// VEX SYSTEM - MULTI-INSTANCE SAAS MANAGER (FIXED)
+// VEX SYSTEM - MULTI-INSTANCE SAAS MANAGER (PRO)
 // Author: Lupin Starnley Jimmoh
-// Purpose: Orchestrates multiple bot instances from Supabase
+// Purpose: Orchestrates instances with SQL session sync
 // ========================================================
 
 require("dotenv").config();
@@ -36,28 +36,32 @@ const commands = new Map();
 const aliases = new Map();
 const observers = [];
 
-// [FIX] ALLOW ALL STATIC FILES FROM PUBLIC FOLDER
+app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 function loadResources() {
-    const cmdFiles = fs.readdirSync(pluginPath).filter(f => f.endsWith(".js"));
-    for (const file of cmdFiles) {
-        try {
-            const plugin = require(path.join(pluginPath, file));
-            const name = plugin.command || file.replace(".js", "");
-            commands.set(name, plugin);
-            if (Array.isArray(plugin.alias)) {
-                plugin.alias.forEach(a => aliases.set(a, name));
-            }
-        } catch (e) { console.error(`Failed to load command ${file}`); }
+    if (fs.existsSync(pluginPath)) {
+        const cmdFiles = fs.readdirSync(pluginPath).filter(f => f.endsWith(".js"));
+        for (const file of cmdFiles) {
+            try {
+                const plugin = require(path.join(pluginPath, file));
+                const name = plugin.command || file.replace(".js", "");
+                commands.set(name, plugin);
+                if (Array.isArray(plugin.alias)) {
+                    plugin.alias.forEach(a => aliases.set(a, name));
+                }
+            } catch (e) { console.error(`Failed to load command ${file}`); }
+        }
     }
 
-    const obsFiles = fs.readdirSync(observerPath).filter(f => f.endsWith(".js"));
-    for (const file of obsFiles) {
-        try {
-            const obs = require(path.join(observerPath, file));
-            if (obs.onMessage) observers.push(obs);
-        } catch (e) { console.error(`Failed to load observer ${file}`); }
+    if (fs.existsSync(observerPath)) {
+        const obsFiles = fs.readdirSync(observerPath).filter(f => f.endsWith(".js"));
+        for (const file of obsFiles) {
+            try {
+                const obs = require(path.join(observerPath, file));
+                if (obs.onMessage) observers.push(obs);
+            } catch (e) { console.error(`Failed to load observer ${file}`); }
+        }
     }
     console.log(`✅ System Resources Loaded: ${commands.size} Commands | ${observers.length} Observers`);
 }
@@ -68,14 +72,20 @@ function loadResources() {
 async function bootInstance(userData) {
     if (activeInstances.has(userData.M_user_id)) return;
 
-    const coreComponents = { commands, aliases, observers, router, cache };
+    // Check balance from M_users (SQL Logic)
+    if (userData.M_vx_balance < 20 && userData.M_membership_tier !== 'LIFETIME') {
+        console.log(`[MANAGER] Low Balance for: ${userData.M_user_id}`);
+        return;
+    }
+
+    const coreComponents = { commands, aliases, observers, router, cache, io };
     const instance = new VexInstance(userData, coreComponents);
     
     try {
         await instance.init();
         activeInstances.set(userData.M_user_id, instance);
     } catch (e) {
-        console.error(`[MANAGER] Failed to boot instance for ${userData.M_user_id}:`, e.message);
+        console.error(`[MANAGER] Boot Failed for ${userData.M_user_id}:`, e.message);
     }
 }
 
@@ -88,7 +98,7 @@ async function startSaaS() {
     await cache.init(supabase);
     loadResources();
 
-    // [FIX] ALIGNED TO SQL SCHEMA (M_account_status)
+    // GET ACTIVE USERS (M_account_status)
     const { data: subscribers, error } = await supabase
         .from("M_users")
         .select("*")
@@ -100,53 +110,76 @@ async function startSaaS() {
     }
 
     for (const user of subscribers) {
-        await bootInstance(user);
+        // Only boot if they have a 'connected' session in M_sessions
+        const { data: session } = await supabase
+            .from("M_sessions")
+            .select("M_pairing_status")
+            .eq("M_user_id", user.M_user_id)
+            .eq("M_pairing_status", "connected")
+            .single();
+
+        if (session) await bootInstance(user);
     }
 
-    // REAL-TIME LISTENER
+    // REAL-TIME POSTGRES SYNC
     supabase
-        .channel("new-subscriptions")
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "M_users" }, async (payload) => {
-            // [FIX] ALIGNED TO SQL SCHEMA (M_account_status)
-            if (payload.new.M_account_status === "active") {
-                console.log(`[MANAGER] New Active User Detected: ${payload.new.M_user_id}`);
-                await bootInstance(payload.new);
-            }
-        })
-        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "M_users" }, async (payload) => {
-            // [FIX] ALIGNED TO SQL SCHEMA (M_account_status)
-            if (payload.new.M_account_status !== "active" && activeInstances.has(payload.new.M_user_id)) {
-                console.log(`[MANAGER] Stopping Instance (Inactive/Expired): ${payload.new.M_user_id}`);
-                const instance = activeInstances.get(payload.new.M_user_id);
+        .channel("system-monitor")
+        .on("postgres_changes", { event: "*", schema: "public", table: "M_users" }, async (payload) => {
+            const user = payload.new;
+            
+            // Handle Activation/Deactivation
+            if (user.M_account_status === "active" && !activeInstances.has(user.M_user_id)) {
+                await bootInstance(user);
+            } else if (user.M_account_status !== "active" && activeInstances.has(user.M_user_id)) {
+                const instance = activeInstances.get(user.M_user_id);
                 if (instance.sock) instance.sock.logout();
-                activeInstances.delete(payload.new.M_user_id);
+                activeInstances.delete(user.M_user_id);
             }
         })
         .subscribe();
 }
 
-// WEB INTERFACE (For Scanning & Monitoring)
+// WEB INTERFACE ROUTING
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "public/index.html")); 
 });
 
-// [FIX] ROUTE FOR HOME.HTML OR OTHER PAGES IN PUBLIC
+// ROUTE FOR INTERNAL PAIRING HANDLED BY VEXINSTANCE
+app.get("/request-pair/:userId", async (req, res) => {
+    const { userId } = req.params;
+    
+    // Check if user exists in M_users
+    const { data: user } = await supabase.from("M_users").select("*").eq("M_user_id", userId).single();
+    
+    if (user) {
+        // Internal VexInstance will handle the UI stream via Socket
+        if (!activeInstances.has(userId)) {
+            const tempInstance = new VexInstance(user, { commands, aliases, observers, router, cache, io });
+            await tempInstance.initPairing(); 
+            activeInstances.set(userId, tempInstance);
+        }
+        res.status(200).json({ status: "Pairing Initialized" });
+    } else {
+        res.status(404).send("User Not Found");
+    }
+});
+
 app.get("/:page", (req, res) => {
     const page = req.params.page;
-    const filePath = path.join(__dirname, "public", page);
+    const filePath = path.join(__dirname, "public", page.endsWith(".html") ? page : `${page}.html`);
     if (fs.existsSync(filePath)) {
         res.sendFile(filePath);
     } else {
-        res.status(404).send("Page not found");
+        res.status(404).send("Resource Not Found");
     }
 });
 
 // START SERVER
 server.listen(PORT, () => {
     startSaaS();
-    console.log(`📡 Manager running on port: ${PORT}`);
+    console.log(`📡 VEX Manager active on port: ${PORT}`);
 });
 
-// SILENT GLOBAL ERRORS
-process.on("uncaughtException", (err) => console.error("CRITICAL ERROR:", err));
-process.on("unhandledRejection", (err) => console.error("UNHANDLED REJECTION:", err));
+// GLOBAL ERROR RECOVERY
+process.on("uncaughtException", (err) => console.error("KERNEL CRITICAL:", err));
+process.on("unhandledRejection", (err) => console.error("PROMISE CRITICAL:", err));
