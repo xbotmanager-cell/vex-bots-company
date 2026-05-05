@@ -64,6 +64,9 @@ async function loadAssets() {
             if (obs.onMessage) observers.push(obs);
         } catch (e) { console.error(`Observer Error: ${file}`, e.message); }
     });
+
+    console.log(`✅ Commands Loaded: ${commands.size}`);
+    console.log(`👁️ Observers Loaded: ${observers.length}`);
 }
 
 // SUPABASE SYNC
@@ -73,6 +76,7 @@ async function syncCloud() {
         if (sess) {
             if (!fs.existsSync("./session")) fs.mkdirSync("./session");
             fs.writeFileSync("./session/creds.json", Buffer.from(sess.data, "base64").toString("utf-8"));
+            console.log("☁️ Session Restored from Cloud");
         }
         const { data: sett } = await supabase.from("vex_settings").select("*");
         sett?.forEach(s => {
@@ -83,7 +87,7 @@ async function syncCloud() {
             if (p.new.setting_name === "prefix") global.prefix = p.new.extra_data.current;
             if (p.new.setting_name === "style") global.activeStyle = p.new.extra_data.current;
         }).subscribe();
-    } catch {}
+    } catch (e) { console.error("Cloud Sync Error:", e.message); }
 }
 
 async function saveToCloud(creds) {
@@ -110,9 +114,11 @@ async function startVex() {
             creds: state.creds, 
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) 
         },
-        browser: ["VEX CORE", "Chrome", "1.0.0"],
+        browser: ["Ubuntu", "Chrome", "20.0.04"],
         syncFullHistory: false,
-        markOnlineOnConnect: true
+        markOnlineOnConnect: true,
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 0
     });
 
     app.use(express.json());
@@ -128,7 +134,7 @@ async function startVex() {
 
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const m = messages[0];
-        if (!m?.message) return; // REMOVED: fromMe restriction to allow bot to respond to self
+        if (!m?.message) return;
 
         const body = m.message?.conversation || 
                      m.message?.extendedTextMessage?.text || 
@@ -140,7 +146,6 @@ async function startVex() {
         m.isBot = m.key.fromMe;
         m.reply = (text) => sock.sendMessage(m.chat, { text }, { quoted: m });
 
-        // Run Observers for everyone (Self + Others)
         observers.forEach(obs => { 
             try { 
                 if (!obs.trigger || obs.trigger(m)) obs.onMessage(m, sock, { supabase, cache }); 
@@ -170,7 +175,6 @@ async function startVex() {
     sock.ev.on("connection.update", async (u) => {
         const { connection, lastDisconnect, qr } = u;
 
-        // Auto-Refresh QR handling via Socket.io
         if (qr) {
             const qrImage = await QRCode.toDataURL(qr);
             io.emit("qr", qrImage);
@@ -183,11 +187,14 @@ async function startVex() {
 
         if (connection === "open") {
             io.emit("connected");
-            await saveToCloud(state.creds);
+            console.log("✅ VEX CONNECTED");
+            
+            saveToCloud(state.creds).catch(() => {});
             
             const statusReport = `🚀 *VEX SYSTEM ONLINE*\n\n` +
                                 `📡 *Prefix:* ${global.prefix}\n` +
                                 `🛠️ *Commands:* ${commands.size}\n` +
+                                `👁️ *Observers:* ${observers.length}\n` +
                                 `🎨 *Style:* ${global.activeStyle}`;
             
             setTimeout(() => {
@@ -198,11 +205,11 @@ async function startVex() {
 
     sock.ev.on("creds.update", async () => {
         await saveCreds();
-        await saveToCloud(state.creds);
+        saveToCloud(state.creds).catch(() => {});
     });
 }
 
-// WEB UI WITH AUTO-REFRESH LOGIC
+// WEB UI
 app.get("/", (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -241,7 +248,6 @@ app.get("/", (req, res) => {
             stEl.style.color = "#00ff00";
         });
 
-        // UI auto-refresh safety if socket hangs
         setInterval(() => {
             if(stEl.innerText === "INITIALIZING...") {
                 window.location.reload();
@@ -258,6 +264,5 @@ server.listen(PORT, () => {
     startVex();
 });
 
-// CRASH PROTECTION
 process.on("uncaughtException", (err) => console.error("CRITICAL ERROR:", err));
 process.on("unhandledRejection", (err) => console.error("PROMISE REJECTION:", err));
