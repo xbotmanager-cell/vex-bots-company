@@ -1,373 +1,291 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>VEX CORE | Mobile Terminal</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="/socket.io/socket.io.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --bg-dark: #050507;
-            --vex-purple: #a855f7;
-            --vex-glow: rgba(168, 85, 247, 0.4);
-            --card-glass: rgba(20, 20, 23, 0.7);
-            --text-main: #f4f4f5;
-            --text-dim: #a1a1aa;
-            --danger: #ff4d4d;
-            --success: #22c55e;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
-        
-        body { 
-            background: radial-gradient(circle at top right, #1a1033, var(--bg-dark)); 
-            color: var(--text-main); 
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
+<title>VEX CORE | Mobile Terminal</title>
 
-        /* --- MOBILE NAVIGATION --- */
-        .mobile-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 15px 20px;
-            background: rgba(10, 10, 12, 0.8);
-            backdrop-filter: blur(10px);
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/socket.io/socket.io.js"></script>
 
-        .menu-toggle {
-            font-size: 1.5rem;
-            color: var(--vex-purple);
-            cursor: pointer;
-        }
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: -280px;
-            width: 280px;
-            height: 100%;
-            background: var(--bg-dark);
-            z-index: 2000;
-            transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            padding: 30px 20px;
-            box-shadow: 10px 0 30px rgba(0,0,0,0.5);
-            display: flex;
-            flex-direction: column;
-        }
+<style>
+:root{
+    --bg:#050507;
+    --purple:#a855f7;
+    --glow:rgba(168,85,247,0.4);
+    --card:rgba(20,20,23,0.7);
+    --text:#f4f4f5;
+    --dim:#a1a1aa;
+    --danger:#ff4d4d;
+    --success:#22c55e;
+}
 
-        .sidebar.active { left: 0; }
+*{margin:0;padding:0;box-sizing:border-box;font-family:Poppins, sans-serif}
 
-        .sidebar-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(4px);
-            z-index: 1500;
-            display: none;
-        }
+body{
+    background: radial-gradient(circle at top right,#1a1033,var(--bg));
+    color:var(--text);
+    max-width:480px;
+    margin:auto;
+    overflow-x:hidden;
+}
 
-        .sidebar-overlay.active { display: block; }
+/* HEADER */
+.header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:15px;
+    position:sticky;
+    top:0;
+    background:rgba(0,0,0,0.7);
+    backdrop-filter:blur(10px);
+    z-index:1000;
+}
 
-        .nav-brand { font-size: 1.8rem; font-weight: 800; color: var(--vex-purple); margin-bottom: 40px; text-align: center; letter-spacing: 3px; }
-        
-        .nav-item {
-            padding: 16px 20px;
-            display: flex;
-            align-items: center;
-            color: var(--text-dim);
-            text-decoration: none;
-            border-radius: 15px;
-            margin-bottom: 10px;
-            font-size: 1.1rem;
-            transition: 0.3s;
-        }
+.menu{font-size:20px;color:var(--purple);cursor:pointer}
 
-        .nav-item.active { background: var(--vex-purple); color: #fff; box-shadow: 0 0 15px var(--vex-glow); }
-        .nav-item i { margin-right: 15px; width: 25px; }
+/* SIDEBAR */
+.sidebar{
+    position:fixed;
+    left:-260px;
+    top:0;
+    width:260px;
+    height:100%;
+    background:#000;
+    transition:0.3s;
+    padding:20px;
+    z-index:2000;
+}
+.sidebar.active{left:0}
 
-        /* --- MAIN CONTENT --- */
-        .main-content { padding: 20px; max-width: 600px; margin: 0 auto; }
+.overlay{
+    position:fixed;
+    width:100%;
+    height:100%;
+    background:rgba(0,0,0,0.6);
+    display:none;
+}
+.overlay.active{display:block}
 
-        .welcome-section { margin-bottom: 30px; }
-        .welcome-section h1 { font-size: 1.6rem; margin-bottom: 5px; }
+/* CONTENT */
+.main{padding:15px}
 
-        /* --- STATS GRID --- */
-        .stats-grid { 
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            gap: 12px; 
-            margin-bottom: 25px; 
-        }
+.card{
+    background:var(--card);
+    padding:18px;
+    border-radius:18px;
+    margin-bottom:15px;
+    border:1px solid rgba(255,255,255,0.05);
+}
 
-        .stat-card { 
-            background: var(--card-glass); 
-            padding: 18px; 
-            border-radius: 18px; 
-            border: 1px solid rgba(255,255,255,0.05);
-            backdrop-filter: blur(12px);
-        }
+/* BUTTON */
+.btn{
+    width:100%;
+    padding:14px;
+    border:none;
+    border-radius:14px;
+    margin-top:10px;
+    font-weight:600;
+}
 
-        .stat-card.wide { grid-column: span 2; }
+.primary{background:var(--purple)}
+.secondary{background:#111;border:1px solid #333}
 
-        .stat-label { color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 8px; }
-        .stat-value { font-size: 1.3rem; font-weight: 700; }
+input{
+    width:100%;
+    padding:14px;
+    border-radius:12px;
+    border:1px solid #333;
+    background:#000;
+    color:#fff;
+    margin-top:10px;
+}
 
-        /* --- ACTION PANEL --- */
-        .action-panel { 
-            background: var(--card-glass); 
-            border-radius: 24px; 
-            padding: 30px 20px; 
-            border: 1px solid rgba(168, 85, 247, 0.2);
-            text-align: center;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-        }
-
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 6px 14px;
-            border-radius: 50px;
-            background: rgba(255,255,255,0.05);
-            font-size: 0.8rem;
-            font-weight: 600;
-            margin-bottom: 20px;
-        }
-
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: #555; }
-        .status-dot.active { background: var(--success); box-shadow: 0 0 10px var(--success); }
-
-        .input-group { margin: 20px 0; }
-        
-        input[type="text"] {
-            width: 100%;
-            background: rgba(0,0,0,0.3);
-            border: 1px solid #333;
-            padding: 16px;
-            border-radius: 12px;
-            color: #fff;
-            font-size: 1rem;
-            text-align: center;
-            outline: none;
-            transition: 0.3s;
-        }
-
-        input[type="text"]:focus { border-color: var(--vex-purple); box-shadow: 0 0 10px var(--vex-glow); }
-
-        .btn {
-            width: 100%;
-            padding: 16px;
-            border-radius: 14px;
-            border: none;
-            font-weight: 700;
-            font-size: 1rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            transition: 0.3s;
-            margin-bottom: 12px;
-        }
-
-        .btn-primary { background: var(--vex-purple); color: #fff; }
-        .btn-secondary { background: rgba(255,255,255,0.05); color: #fff; border: 1px solid #333; }
-        .btn-claim { background: linear-gradient(45deg, #a855f7, #6366f1); color: #fff; margin-bottom: 25px; }
-
-        /* Pairing Modal */
-        #portal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9); z-index: 3000;
-            display: none; justify-content: center; align-items: center; padding: 20px;
-        }
-
-        #portal-container { background: #111; width: 100%; border-radius: 20px; padding: 20px; border: 1px solid var(--vex-purple); }
-
-    </style>
+/* MODAL */
+#portal{
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:#000;
+    display:none;
+    justify-content:center;
+    align-items:center;
+    z-index:5000;
+}
+</style>
 </head>
+
 <body>
 
-<!-- Mobile Sidebar -->
-<div class="sidebar-overlay" id="overlay" onclick="toggleMenu()"></div>
-<nav class="sidebar" id="sidebar">
-    <div class="nav-brand">VEX CORE</div>
-    <div style="flex: 1;">
-        <a href="index.html" class="nav-item active"><i class="fa-solid fa-house"></i> Home</a>
-        <a href="instances.html" class="nav-item"><i class="fa-solid fa-server"></i> My Bots</a>
-        <a href="billing.html" class="nav-item"><i class="fa-solid fa-bolt"></i> Upgrade</a>
-        <a href="settings.html" class="nav-item"><i class="fa-solid fa-sliders"></i> Config</a>
-    </div>
-    <a href="#" onclick="logout()" class="nav-item" style="color: var(--danger);"><i class="fa-solid fa-power-off"></i> Logout</a>
-</nav>
+<div class="overlay" id="overlay" onclick="toggleMenu()"></div>
 
-<!-- Top Bar -->
-<div class="mobile-header">
-    <div class="menu-toggle" onclick="toggleMenu()"><i class="fa-solid fa-bars-staggered"></i></div>
-    <div style="font-weight: 800; letter-spacing: 1px;">VEX<span style="color: var(--vex-purple);">~</span>HUB</div>
-    <div id="user-avatar" style="width: 35px; height: 35px; background: #222; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid var(--vex-purple);">
-        <i class="fa-solid fa-user" style="font-size: 0.9rem;"></i>
-    </div>
+<div class="sidebar" id="sidebar">
+    <h2 style="color:var(--purple)">VEX CORE</h2>
+    <br>
+    <p onclick="logout()" style="color:red;cursor:pointer">Logout</p>
 </div>
 
-<div id="portal-overlay">
-    <div id="portal-container">
-        <!-- Rendered Portal content will inject here -->
-    </div>
+<div class="header">
+    <div class="menu" onclick="toggleMenu()">☰</div>
+    <div>VEX<span style="color:var(--purple)">~</span>HUB</div>
+    <div id="avatar">👤</div>
 </div>
 
-<main class="main-content">
-    <section class="welcome-section">
-        <h1 id="welcome-text">Initializing...</h1>
-        <p style="color: var(--text-dim); font-size: 0.9rem;">Node: Dar es Salaam v1.0.4</p>
-    </section>
+<div id="portal"></div>
 
-    <button class="btn btn-claim" onclick="claimDaily()">
-        <i class="fa-solid fa-gift"></i> CLAIM DAILY 5 VX
-    </button>
+<div class="main">
 
-    <div class="stats-grid">
-        <div class="stat-card">
-            <span class="stat-label">Wallet</span>
-            <div class="stat-value"><span id="vx-balance">0</span> <span style="color: var(--vex-purple); font-size: 0.8rem;">VX</span></div>
-        </div>
-        <div class="stat-card">
-            <span class="stat-label">Status</span>
-            <div class="stat-value" id="status-text" style="color: var(--danger);">OFFLINE</div>
-        </div>
-        <div class="stat-card wide">
-            <span class="stat-label">Active Session Uptime</span>
-            <div class="stat-value" id="uptime-val" style="font-family: monospace;">00h 00m 00s</div>
-        </div>
+    <h3 id="welcome">Loading...</h3>
+
+    <div class="card">
+        Wallet: <b id="balance">0</b> VX
     </div>
 
-    <section class="action-panel">
-        <div class="status-badge">
-            <div class="status-dot" id="live-dot"></div>
-            <span id="logic-label">VEX ENGINE READY</span>
-        </div>
-        
-        <h2 style="font-size: 1.4rem;">Deployment Hub</h2>
-        <p style="color: var(--text-dim); font-size: 0.85rem; margin: 10px 0 20px;">Deploy your automated instance to the VEX network.</p>
+    <div class="card">
+        Status: <b id="status" style="color:red">OFFLINE</b>
+    </div>
 
-        <div class="input-group">
-            <input type="text" id="session-id-input" placeholder="PASTE SESSION ID HERE">
-        </div>
+    <div class="card">
+        <input id="sid" placeholder="Paste VEX~ Session ID">
 
-        <button class="btn btn-primary" onclick="deployBot()">
-            <i class="fa-solid fa-bolt-lightning"></i> DEPLOY INSTANCE (20 VX)
-        </button>
-        
-        <button class="btn btn-secondary" onclick="requestPairing()">
-            <i class="fa-solid fa-link"></i> LINK NEW ACCOUNT
-        </button>
-    </section>
-</main>
+        <button class="btn primary" onclick="deploy()">DEPLOY</button>
+        <button class="btn secondary" onclick="pair()">PAIR NEW</button>
+    </div>
+
+</div>
 
 <script>
-    // CRITICAL INITIALIZATION
-    const supabaseUrl = 'https://rxkwkapxzcmpjsegpbpv.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4a3drYXB4emNtcGpzZWdwYnB2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzA1MTQyMywiZXhwIjoyMDkyNjI3NDIzfQ.cFAslTZh7j30pCLB2r80k7FpPJ3XeWxadTvbQ4hEkhI';
-    const vex = supabase.createClient(supabaseUrl, supabaseKey);
-    const socket = io();
+const supabase = supabase.createClient(
+"https://rxkwkapxzcmpjsegpbpv.supabase.co",
+"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4a3drYXB4emNtcGpzZWdwYnB2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzA1MTQyMywiZXhwIjoyMDkyNjI3NDIzfQ.cFAslTZh7j30pCLB2r80k7FpPJ3XeWxadTvbQ4hEkhI"
+);
 
-    let currentUser = null;
+const socket = io();
+let user;
 
-    function toggleMenu() {
-        document.getElementById('sidebar').classList.toggle('active');
-        document.getElementById('overlay').classList.toggle('active');
+/* MENU */
+function toggleMenu(){
+    sidebar.classList.toggle("active");
+    overlay.classList.toggle("active");
+}
+
+/* INIT */
+async function init(){
+    const {data:{user:u}} = await supabase.auth.getUser();
+
+    if(!u){
+        location.href="index.html";
+        return;
     }
 
-    async function init() {
-        try {
-            const { data: { user } } = await vex.auth.getUser();
-            if (!user) { window.location.href = 'login.html'; return; }
-            currentUser = user;
-            
-            fetchUserStats();
-            subscribeToUpdates();
-        } catch (e) {
-            console.error("Auth Error:", e);
-        }
+    user = u;
+
+    // IMPORTANT: join room for pairing
+    socket.emit("join", user.id);
+
+    loadUser();
+    listenRealtime();
+}
+
+/* LOAD USER */
+async function loadUser(){
+    const {data} = await supabase
+        .from("M_users")
+        .select("*")
+        .eq("M_user_id", user.id)
+        .single();
+
+    if(data){
+        welcome.innerText = "Hello, " + (data.M_username || "Operator");
+        balance.innerText = data.M_vx_balance;
     }
 
-    async function fetchUserStats() {
-        const { data: profile } = await vex.from('M_users').select('*').eq('M_user_id', currentUser.id).single();
-        if (profile) {
-            document.getElementById('welcome-text').innerText = `Hello, ${profile.M_username || 'Operator'}`;
-            document.getElementById('vx-balance').innerText = profile.M_vx_balance;
-        }
+    const {data:session} = await supabase
+        .from("M_sessions")
+        .select("*")
+        .eq("M_user_id", user.id)
+        .single();
 
-        const { data: session } = await vex.from('M_sessions').select('M_pairing_status').eq('M_user_id', currentUser.id).single();
-        updateUIStatus(session?.M_pairing_status || 'disconnected');
+    updateStatus(session?.M_pairing_status);
+}
+
+/* STATUS */
+function updateStatus(s){
+    if(s==="connected"){
+        status.innerText="ONLINE";
+        status.style.color="lime";
+    }else{
+        status.innerText="OFFLINE";
+        status.style.color="red";
     }
+}
 
-    function updateUIStatus(status) {
-        const dot = document.getElementById('live-dot');
-        const text = document.getElementById('status-text');
-        const label = document.getElementById('logic-label');
+/* DEPLOY */
+async function deploy(){
+    const sidVal = sid.value;
 
-        if (status === 'connected') {
-            dot.classList.add('active');
-            text.innerText = 'ONLINE';
-            text.style.color = 'var(--success)';
-            label.innerText = 'INSTANCE ACTIVE';
-        } else {
-            dot.classList.remove('active');
-            text.innerText = 'OFFLINE';
-            text.style.color = 'var(--danger)';
-            label.innerText = 'VEX ENGINE IDLE';
-        }
-    }
+    if(!sidVal.startsWith("VEX~")) return alert("Invalid ID");
 
-    async function requestPairing() {
-        const response = await fetch(`/request-pair/${currentUser.id}`);
-        if (response.ok) {
-            document.getElementById('portal-overlay').style.display = 'flex';
-        }
-    }
+    await supabase.from("M_sessions").upsert({
+        M_user_id:user.id,
+        M_session_data:{creds:sidVal},
+        M_pairing_status:"connected"
+    });
 
-    async function deployBot() {
-        const sid = document.getElementById('session-id-input').value;
-        const bal = parseInt(document.getElementById('vx-balance').innerText);
+    alert("Deploying...");
+}
 
-        if (!sid.startsWith('VEX~')) return alert("Use a valid VEX~ ID");
-        if (bal < 20) return alert("Low VX Balance!");
+/* PAIR */
+async function pair(){
+    await fetch(`/request-pair/${user.id}`);
+    portal.style.display="flex";
+}
 
-        const { error } = await vex.from('M_sessions').upsert({
-            M_user_id: currentUser.id,
-            M_session_data: { creds: sid },
-            M_pairing_status: 'connected'
-        });
+/* SOCKET EVENTS */
+socket.on("render_portal", html=>{
+    portal.innerHTML = html;
+});
 
-        if (!error) alert("System Deploying...");
-    }
+socket.on("vex_pairing_complete", ()=>{
+    portal.style.display="none";
+});
 
-    async function claimDaily() {
-        const { error } = await vex.rpc('increment_vx', { user_id: currentUser.id, amount: 5 });
-        if (error) alert("Already claimed today!");
-        else alert("5 VX Added!");
-    }
+/* REALTIME */
+function listenRealtime(){
+    supabase.channel("live")
+    .on("postgres_changes",{
+        event:"*",
+        schema:"public",
+        table:"M_sessions",
+        filter:`M_user_id=eq.${user.id}`
+    },p=>{
+        updateStatus(p.new.M_pairing_status);
+    })
+    .on("postgres_changes",{
+        event:"*",
+        schema:"public",
+        table:"M_users",
+        filter:`M_user_id=eq.${user.id}`
+    },p=>{
+        balance.innerText = p.new.M_vx_balance;
+    })
+    .subscribe();
+}
 
-    function subscribeToUpdates() {
-        vex.channel('realtime_core')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'M_sessions', filter: `M_user_id=eq.${currentUser.id}` }, p => updateUIStatus(p.new.M_pairing_status))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'M_users', filter: `M_user_id=eq.${currentUser.id}` }, p => {
-                document.getElementById('vx-balance').innerText = p.new.M_vx_balance;
-            })
-            .subscribe();
-    }
+/* LOGOUT */
+async function logout(){
+    await supabase.auth.signOut();
+    location.href="index.html";
+}
 
-    window.onload = init;
+init();
 </script>
+
 </body>
 </html>
