@@ -1,4 +1,9 @@
-module.exports = async function router(m, ctx) {
+/**
+ * VEX ROUTER (ESM Version)
+ * All logic remains the same, syntax updated for Node 22 + Baileys v7
+ */
+
+export default async function router(m, ctx) {
     const {
         body,
         commands,
@@ -106,7 +111,7 @@ module.exports = async function router(m, ctx) {
 
     // ================= DEFAULT =================
     return { type: "ignore" };
-};
+}
 
 // ================= HELPER =================
 
