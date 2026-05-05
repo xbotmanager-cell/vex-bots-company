@@ -1,4 +1,4 @@
-const EventEmitter = require("events");
+import EventEmitter from "events";
 
 class VexCache extends EventEmitter {
     constructor() {
@@ -139,10 +139,10 @@ class VexCache extends EventEmitter {
         try {
             await supabase
                 .from("users")
-                .upsert({
-                    id: jid,
+                .update({
                     ...data
-                });
+                })
+                .eq("id", jid);
 
             const current = this.getUser(jid);
 
@@ -175,4 +175,5 @@ class VexCache extends EventEmitter {
     }
 }
 
-module.exports = new VexCache();
+// Badala ya module.exports, sasa tunatumia export default
+export default new VexCache();
