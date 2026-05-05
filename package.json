@@ -1,6 +1,6 @@
 {
   "name": "vex-mini-bot",
-  "version": "1.2.0",
+  "version": "1.0.0",
   "description": "VEX ARSENAL: Advanced AI, Cyber-Intelligence, Marketplace & Media Extraction Suite",
   "main": "index.js",
   "type": "module",
@@ -13,7 +13,7 @@
   "author": "Lupin Starnley Jimmoh (Mentor Brian)",
   "license": "MIT",
   "engines": {
-    "node": "20.x"
+    "node": "20.0.0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.42.0",
