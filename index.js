@@ -1,7 +1,5 @@
 // ========================================================
-// VEX SYSTEM - MULTI-INSTANCE SAAS MANAGER (PRO)
-// Author: Lupin Starnley Jimmoh
-// Purpose: Orchestrates instances with SQL session sync
+// VEX SYSTEM - MULTI-INSTANCE SAAS MANAGER (FIXED PRO)
 // ========================================================
 
 require("dotenv").config();
@@ -12,24 +10,26 @@ const { createClient } = require("@supabase/supabase-js");
 const path = require("path");
 const fs = require("fs");
 
-// CORE COMPONENTS
+// CORE
 const VexInstance = require("./core/VexInstance");
 const cache = require("./core/cache");
 const router = require("./core/router");
 
-// SETUP
+// SERVER
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    cors: { origin: "*" }
+});
 const PORT = process.env.PORT || 10000;
 
-// DATABASE
+// DB
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// STORE ACTIVE INSTANCES (Memory Map)
+// MEMORY
 const activeInstances = new Map();
 
-// LOAD COMMANDS & OBSERVERS
+// COMMANDS
 const pluginPath = path.join(__dirname, "plugins");
 const observerPath = path.join(__dirname, "observers");
 const commands = new Map();
@@ -39,10 +39,15 @@ const observers = [];
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+// ================= LOAD =================
 function loadResources() {
+    commands.clear();
+    aliases.clear();
+    observers.length = 0;
+
     if (fs.existsSync(pluginPath)) {
-        const cmdFiles = fs.readdirSync(pluginPath).filter(f => f.endsWith(".js"));
-        for (const file of cmdFiles) {
+        const files = fs.readdirSync(pluginPath).filter(f => f.endsWith(".js"));
+        for (const file of files) {
             try {
                 const plugin = require(path.join(pluginPath, file));
                 const name = plugin.command || file.replace(".js", "");
@@ -50,136 +55,180 @@ function loadResources() {
                 if (Array.isArray(plugin.alias)) {
                     plugin.alias.forEach(a => aliases.set(a, name));
                 }
-            } catch (e) { console.error(`Failed to load command ${file}`); }
+            } catch {}
         }
     }
 
     if (fs.existsSync(observerPath)) {
-        const obsFiles = fs.readdirSync(observerPath).filter(f => f.endsWith(".js"));
-        for (const file of obsFiles) {
+        const files = fs.readdirSync(observerPath).filter(f => f.endsWith(".js"));
+        for (const file of files) {
             try {
                 const obs = require(path.join(observerPath, file));
                 if (obs.onMessage) observers.push(obs);
-            } catch (e) { console.error(`Failed to load observer ${file}`); }
+            } catch {}
         }
     }
-    console.log(`✅ System Resources Loaded: ${commands.size} Commands | ${observers.length} Observers`);
+
+    console.log(`✅ Loaded: ${commands.size} cmds | ${observers.length} observers`);
 }
 
-/**
- * START A SPECIFIC BOT INSTANCE
- */
-async function bootInstance(userData) {
-    if (activeInstances.has(userData.M_user_id)) return;
+// ================= BOOT INSTANCE =================
+async function bootInstance(user) {
+    if (activeInstances.has(user.M_user_id)) return;
 
-    // Check balance from M_users (SQL Logic)
-    if (userData.M_vx_balance < 20 && userData.M_membership_tier !== 'LIFETIME') {
-        console.log(`[MANAGER] Low Balance for: ${userData.M_user_id}`);
+    if (user.M_vx_balance < 20 && user.M_membership_tier !== "LIFETIME") {
+        console.log("⛔ Not enough VX:", user.M_user_id);
         return;
     }
 
-    const coreComponents = { commands, aliases, observers, router, cache, io };
-    const instance = new VexInstance(userData, coreComponents);
-    
+    const instance = new VexInstance(user, {
+        commands,
+        aliases,
+        observers,
+        router,
+        cache,
+        io
+    });
+
     try {
         await instance.init();
-        activeInstances.set(userData.M_user_id, instance);
+        activeInstances.set(user.M_user_id, instance);
+        console.log("✅ Instance started:", user.M_user_id);
     } catch (e) {
-        console.error(`[MANAGER] Boot Failed for ${userData.M_user_id}:`, e.message);
+        console.log("❌ Boot error:", e.message);
     }
 }
 
-/**
- * INITIALIZE SAAS ENGINE
- */
+// ================= START ENGINE =================
 async function startSaaS() {
-    console.log("🚀 VEX SAAS ENGINE STARTING...");
-    
+    console.log("🚀 VEX ENGINE START...");
+
     await cache.init(supabase);
     loadResources();
 
-    // GET ACTIVE USERS (M_account_status)
-    const { data: subscribers, error } = await supabase
+    const { data: users } = await supabase
         .from("M_users")
         .select("*")
         .eq("M_account_status", "active");
 
-    if (error) {
-        console.error("[MANAGER] DB Fetch Error:", error.message);
-        return;
-    }
-
-    for (const user of subscribers) {
-        // Only boot if they have a 'connected' session in M_sessions
+    for (const user of users || []) {
         const { data: session } = await supabase
             .from("M_sessions")
-            .select("M_pairing_status")
+            .select("*")
             .eq("M_user_id", user.M_user_id)
             .eq("M_pairing_status", "connected")
-            .single();
+            .maybeSingle();
 
-        if (session) await bootInstance(user);
+        if (session) {
+            await bootInstance(user);
+        }
     }
 
-    // REAL-TIME POSTGRES SYNC
+    // REALTIME
     supabase
-        .channel("system-monitor")
-        .on("postgres_changes", { event: "*", schema: "public", table: "M_users" }, async (payload) => {
+        .channel("users-live")
+        .on("postgres_changes", {
+            event: "*",
+            schema: "public",
+            table: "M_users"
+        }, async (payload) => {
+
             const user = payload.new;
-            
-            // Handle Activation/Deactivation
-            if (user.M_account_status === "active" && !activeInstances.has(user.M_user_id)) {
+
+            if (user.M_account_status === "active") {
                 await bootInstance(user);
-            } else if (user.M_account_status !== "active" && activeInstances.has(user.M_user_id)) {
-                const instance = activeInstances.get(user.M_user_id);
-                if (instance.sock) instance.sock.logout();
-                activeInstances.delete(user.M_user_id);
+            } else {
+                if (activeInstances.has(user.M_user_id)) {
+                    const inst = activeInstances.get(user.M_user_id);
+                    try { inst.sock.logout(); } catch {}
+                    activeInstances.delete(user.M_user_id);
+                    console.log("🛑 Instance stopped:", user.M_user_id);
+                }
             }
+
         })
         .subscribe();
 }
 
-// WEB INTERFACE ROUTING
-app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "public/index.html")); 
+// ================= SOCKET =================
+io.on("connection", (socket) => {
+
+    socket.on("join", (userId) => {
+        socket.join(userId);
+        console.log("👤 Joined room:", userId);
+    });
+
 });
 
-// ROUTE FOR INTERNAL PAIRING HANDLED BY VEXINSTANCE
+// ================= ROUTES =================
+
+// HOME
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "public/index.html"));
+});
+
+// START PAIRING
 app.get("/request-pair/:userId", async (req, res) => {
     const { userId } = req.params;
-    
-    // Check if user exists in M_users
-    const { data: user } = await supabase.from("M_users").select("*").eq("M_user_id", userId).single();
-    
-    if (user) {
-        // Internal VexInstance will handle the UI stream via Socket
-        if (!activeInstances.has(userId)) {
-            const tempInstance = new VexInstance(user, { commands, aliases, observers, router, cache, io });
-            await tempInstance.initPairing(); 
-            activeInstances.set(userId, tempInstance);
-        }
-        res.status(200).json({ status: "Pairing Initialized" });
-    } else {
-        res.status(404).send("User Not Found");
+
+    const { data: user } = await supabase
+        .from("M_users")
+        .select("*")
+        .eq("M_user_id", userId)
+        .single();
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // avoid duplicate
+    if (activeInstances.has(userId)) {
+        return res.json({ status: "already_running" });
+    }
+
+    const instance = new VexInstance(user, {
+        commands,
+        aliases,
+        observers,
+        router,
+        cache,
+        io
+    });
+
+    try {
+        await instance.initPairing(); // ONLY QR MODE
+        activeInstances.set(userId, instance);
+
+        res.json({ status: "pairing_started" });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
+// STOP
+app.post("/stop", async (req, res) => {
+    const { userId } = req.body;
+
+    if (activeInstances.has(userId)) {
+        const inst = activeInstances.get(userId);
+        try { inst.sock.logout(); } catch {}
+        activeInstances.delete(userId);
+    }
+
+    res.json({ status: "stopped" });
+});
+
+// STATIC PAGES
 app.get("/:page", (req, res) => {
-    const page = req.params.page;
-    const filePath = path.join(__dirname, "public", page.endsWith(".html") ? page : `${page}.html`);
-    if (fs.existsSync(filePath)) {
-        res.sendFile(filePath);
-    } else {
-        res.status(404).send("Resource Not Found");
-    }
+    const file = path.join(__dirname, "public", req.params.page);
+    if (fs.existsSync(file)) return res.sendFile(file);
+    res.status(404).send("Not Found");
 });
 
-// START SERVER
+// START
 server.listen(PORT, () => {
     startSaaS();
-    console.log(`📡 VEX Manager active on port: ${PORT}`);
+    console.log("🌐 Server running on:", PORT);
 });
 
-// GLOBAL ERROR RECOVERY
-process.on("uncaughtException", (err) => console.error("KERNEL CRITICAL:", err));
-process.on("unhandledRejection", (err) => console.error("PROMISE CRITICAL:", err));
+// ERRORS
+process.on("uncaughtException", () => {});
+process.on("unhandledRejection", () => {});
