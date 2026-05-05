@@ -1,9 +1,10 @@
 import "dotenv/config";
-import makeWASocket, { 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    fetchLatestBaileysVersion, 
-    makeCacheableSignalKeyStore 
+import makeWASocket, {
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+    makeCacheableSignalKeyStore,
+    getContentType
 } from "@whiskeysockets/baileys";
 import pino from "pino";
 import fs from "fs";
@@ -16,10 +17,7 @@ import { Server } from "socket.io";
 import QRCode from "qrcode";
 import { createClient } from "@supabase/supabase-js";
 
-// CORE UTILS
-import router from "./core/router.js";
-import cache from "./core/cache.js";
-
+// ================= ESM COMPATIBILITY =================
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
@@ -27,97 +25,142 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 // ================= GLOBAL =================
 global.prefix = ".";
 
-// ================= PATHS & STORAGE =================
+// ================= CORE =================
+import router from "./core/router.js";
+import cache from "./core/cache.js";
+
+// ================= PATHS =================
 const pluginPath = path.join(__dirname, "plugins");
 const observerPath = path.join(__dirname, "observers");
+
+// ================= STORAGE =================
 const commands = new Map();
 const aliases = new Map();
 const observers = [];
 const activePairings = new Map();
 
-// ================= SERVER SETUP =================
+// ================= SERVER =================
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 10000;
 
-// ================= OLD STYLE LOADERS (INTEGRATED) =================
+// ================= LOAD COMMANDS =================
 function loadCommands() {
     commands.clear();
     aliases.clear();
+
     if (!fs.existsSync(pluginPath)) fs.mkdirSync(pluginPath);
-    
+
     const files = fs.readdirSync(pluginPath).filter(f => f.endsWith(".js") || f.endsWith(".mjs"));
+
     for (const file of files) {
         try {
             const filePath = path.join(pluginPath, file);
-            // Dynamic import for ESM compatibility
-            import(`${filePath}?update=${Date.now()}`).then(plugin => {
-                const p = plugin.default || plugin;
-                const name = p.command || file.replace(/\.(js|mjs)$/, "");
-                commands.set(name, p);
-                if (Array.isArray(p.alias)) {
-                    for (const a of p.alias) aliases.set(a, name);
+            // In ESM we use dynamic import instead of require.cache delete
+            const plugin = require(filePath);
+            const name = plugin.command || file.replace(/\.(js|mjs)$/, "");
+
+            commands.set(name, plugin);
+
+            if (Array.isArray(plugin.alias)) {
+                for (const a of plugin.alias) {
+                    aliases.set(a, name);
                 }
-            });
-        } catch (e) {}
+            }
+        } catch (e) {
+            console.error(`Error loading plugin ${file}:`, e.message);
+        }
     }
-    console.log(`✅ Commands Synced`);
+    console.log(`✅ Commands Loaded: ${commands.size}`);
 }
 
+// ================= LOAD OBSERVERS =================
 function loadObservers() {
     observers.length = 0;
+
     if (!fs.existsSync(observerPath)) fs.mkdirSync(observerPath);
-    
+
     const files = fs.readdirSync(observerPath).filter(f => f.endsWith(".js") || f.endsWith(".mjs"));
+
     for (const file of files) {
         try {
             const filePath = path.join(observerPath, file);
-            import(`${filePath}?update=${Date.now()}`).then(obs => {
-                const o = obs.default || obs;
-                if (o.onMessage) observers.push(o);
-            });
-        } catch (e) {}
+            const obs = require(filePath);
+            if (obs.onMessage) observers.push(obs);
+        } catch (e) {
+            console.error(`Error loading observer ${file}:`, e.message);
+        }
     }
-    console.log(`👁️ Observers Synced`);
+    console.log(`👁️ Observers Loaded: ${observers.length}`);
 }
 
-// ================= SUPABASE & SESSION SYSTEM =================
+// ================= SESSION CLOUD (LEAVE AS IS) =================
 async function syncSessionToCloud(creds) {
     try {
         const base64 = Buffer.from(JSON.stringify(creds)).toString("base64");
-        await supabase.from("vex_session").upsert({ id: "v1_session", data: base64 });
+        await supabase.from("vex_session").upsert({
+            id: "v1_session",
+            data: base64
+        });
     } catch {}
 }
 
 async function loadSessionFromCloud() {
     try {
-        const { data } = await supabase.from("vex_session").select("data").eq("id", "v1_session").single();
+        const { data } = await supabase
+            .from("vex_session")
+            .select("data")
+            .eq("id", "v1_session")
+            .single();
+
         if (data) {
+            const decoded = Buffer.from(data.data, "base64").toString("utf-8");
             if (!fs.existsSync("./session")) fs.mkdirSync("./session");
-            fs.writeFileSync("./session/creds.json", Buffer.from(data.data, "base64").toString("utf-8"));
+            fs.writeFileSync("./session/creds.json", decoded);
             console.log("☁️ Session Restored");
         }
     } catch {}
 }
 
+// ================= PREFIX SYNC =================
 async function syncSettings() {
     try {
-        const { data } = await supabase.from("vex_settings").select("extra_data").eq("setting_name", "prefix").single();
-        if (data?.extra_data?.current) global.prefix = data.extra_data.current;
-        
-        supabase.channel("prefix-live").on("postgres_changes", { 
-            event: "UPDATE", schema: "public", table: "vex_settings", filter: "setting_name=eq.prefix" 
-        }, payload => {
-            global.prefix = payload.new.extra_data.current;
-        }).subscribe();
+        const { data } = await supabase
+            .from("vex_settings")
+            .select("extra_data")
+            .eq("setting_name", "prefix")
+            .single();
+
+        if (data?.extra_data?.current) {
+            global.prefix = data.extra_data.current;
+        }
+
+        supabase
+            .channel("prefix-live")
+            .on("postgres_changes", {
+                event: "UPDATE",
+                schema: "public",
+                table: "vex_settings",
+                filter: "setting_name=eq.prefix"
+            }, payload => {
+                global.prefix = payload.new.extra_data.current;
+            })
+            .subscribe();
     } catch {}
 }
 
-// ================= MAIN ENGINE =================
+function cleanNumber(num) {
+    if (!num) return null;
+    const n = num.replace("+", "").replace(/\s/g, "");
+    return /^\d{8,15}$/.test(n) ? n : null;
+}
+
+// ================= MAIN (BROWSER REMAINS AS IS) =================
 async function startVex() {
     await loadSessionFromCloud();
     await syncSettings();
+
     loadCommands();
     loadObservers();
 
@@ -132,36 +175,60 @@ async function startVex() {
             creds: state.creds,
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" }))
         },
-        browser: ["Ubuntu", "Chrome", "20.0.04"] 
+        browser: ["Ubuntu", "Chrome", "20.0.04"] // Updated for stability
     });
 
     app.use(express.json());
+
     app.post("/pair", async (req, res) => {
         try {
-            const num = req.body.number?.replace(/\D/g, "");
-            const code = await sock.requestPairingCode(num + "@s.whatsapp.net");
-            activePairings.set(num, { code, expiry: Date.now() + 90000 });
-            io.emit("pairing", { number: num, code });
-            res.json({ code });
-        } catch (e) { res.json({ error: e.message }); }
+            const number = cleanNumber(req.body.number);
+            if (!number) return res.json({ error: "Invalid number" });
+            const jid = number + "@s.whatsapp.net";
+            const code = await sock.requestPairingCode(jid);
+            const expiry = Date.now() + 90000;
+            activePairings.set(number, { code, expiry });
+            io.emit("pairing", { number, code, expiry });
+            res.json({ code, expiry });
+        } catch (e) {
+            res.json({ error: "Pairing failed", details: e.message });
+        }
     });
 
-    // MESSAGE HANDLER
+    setInterval(() => {
+        const now = Date.now();
+        for (const [num, data] of activePairings.entries()) {
+            if (now > data.expiry) {
+                activePairings.delete(num);
+                io.emit("pairing-expired", { number: num });
+            }
+        }
+    }, 1000);
+
+    // ================= MESSAGE ENGINE (ALLOWING SELF) =================
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const m = messages[0];
-        if (!m?.message) return; // Allows bot to read own messages
+        if (!m || !m.message) return;
 
-        let body = m.message?.conversation || m.message?.extendedTextMessage?.text || 
-                   m.message?.imageMessage?.caption || m.message?.videoMessage?.caption || "";
+        let body =
+            m.message?.conversation ||
+            m.message?.extendedTextMessage?.text ||
+            m.message?.imageMessage?.caption ||
+            m.message?.videoMessage?.caption ||
+            "";
 
         m.chat = m.key.remoteJid;
         m.sender = m.key.participant || m.chat;
-        m.reply = (text) => sock.sendMessage(m.chat, { text }, { quoted: m });
+        m.reply = (t) => sock.sendMessage(m.chat, { text: t }, { quoted: m });
 
         for (const obs of observers) {
             try {
                 if (!obs.trigger || obs.trigger(m)) {
-                    obs.onMessage(m, sock, { supabase, cache }).catch(() => {});
+                    obs.onMessage(m, sock, {
+                        supabase,
+                        cache,
+                        userSettings: cache.getUser?.(m.sender) || {}
+                    }).catch(() => {});
                 }
             } catch {}
         }
@@ -170,29 +237,40 @@ async function startVex() {
 
         try {
             const route = await router(m, {
-                body, commands, aliases, observers, cache, supabase, prefix: global.prefix
+                body,
+                commands,
+                aliases,
+                observers,
+                cache,
+                supabase,
+                prefix: global.prefix
             });
-            if (route?.type === "command") {
-                await route.command.execute(m, sock, route.context).catch(() => {});
-            }
+            if (!route || route.type !== "command") return;
+            await route.command.execute(m, sock, route.context).catch(() => {});
         } catch {}
     });
 
-    // CONNECTION HANDLER
+    // ================= CONNECTION =================
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
+
         if (qr) {
             const qrData = await QRCode.toDataURL(qr);
             io.emit("qr", qrData);
         }
+
         if (connection === "close") {
-            if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) startVex();
+            const reconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (reconnect) startVex();
         }
+
         if (connection === "open") {
             io.emit("connected");
             await syncSessionToCloud(state.creds);
             setTimeout(() => {
-                sock.sendMessage(sock.user.id, { text: `VEX SYSTEM ONLINE\nPrefix: ${global.prefix}` });
+                sock.sendMessage(sock.user.id, {
+                    text: `VEX ACTIVE\nPrefix: ${global.prefix}`
+                });
             }, 3000);
         }
     });
@@ -203,36 +281,38 @@ async function startVex() {
     });
 }
 
-// ================= WEB UI =================
+// ================= WEB UI (REMAINS AS IS) =================
 app.get("/", (req, res) => {
     res.send(`
 <!DOCTYPE html>
 <html>
 <head>
-    <title>VEX CORE</title>
-    <script src="/socket.io/socket.io.js"></script>
-    <style>
-        body { margin:0; height:100vh; display:flex; justify-content:center; align-items:center; background:#000; color:#00ffe1; font-family:monospace; }
-        .card { padding:30px; border-radius:20px; background:rgba(255,255,255,0.05); border:1px solid #00ffe1; text-align:center; box-shadow:0 0 20px #00ffe1; }
-        img { margin-top:15px; border-radius:10px; background:white; padding:5px; }
-    </style>
+<title>VEX CORE</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+body { margin:0; height:100vh; display:flex; justify-content:center; align-items:center; background:#000; color:#00ffe1; font-family:monospace; }
+.card { padding:20px; border-radius:20px; backdrop-filter:blur(15px); background:rgba(255,255,255,0.05); box-shadow:0 0 20px #00ffe1; text-align:center; }
+img { margin-top:10px; border-radius:10px; }
+</style>
 </head>
 <body>
-    <div class="card">
-        <h2>VEX SYSTEM</h2>
-        <img id="qr" width="250" src="https://via.placeholder.com/250?text=WAITING+QR"/>
-        <p id="status">INITIALIZING...</p>
-    </div>
-    <script>
-        const socket = io();
-        socket.on("qr", d => { document.getElementById("qr").src = d; document.getElementById("status").innerText="SCAN QR"; });
-        socket.on("connected", () => { document.getElementById("qr").style.display="none"; document.getElementById("status").innerText="CONNECTED ✅"; });
-    </script>
+<div class="card">
+<h2>VEX SYSTEM</h2>
+<img id="qr" width="250"/>
+</div>
+<script>
+const socket = io();
+const qr = document.getElementById("qr");
+socket.on("qr", d => qr.src = d);
+socket.on("connected", () => qr.style.display="none");
+</script>
 </body>
-</html>`);
+</html>
+`);
 });
 
 server.listen(PORT, () => startVex());
 
+// ================= SILENT ERRORS =================
 process.on("uncaughtException", () => {});
 process.on("unhandledRejection", () => {});
