@@ -1,7 +1,7 @@
 // ========================================================
-// VEX SYSTEM - SMART SAAS ROUTER (PLUGIN ADAPTER)
+// VEX SYSTEM - SMART SAAS ROUTER (VEX~ OPTIMIZED)
 // Author: Lupin Starnley Jimmoh
-// Purpose: Intercepts and adapts 100+ plugins for Multi-Instance use
+// Purpose: Intercepts, adapts, and sanitizes 100+ plugins
 // ========================================================
 
 module.exports = async function router(m, ctx) {
@@ -13,7 +13,8 @@ module.exports = async function router(m, ctx) {
         cache,
         supabase,
         prefix,
-        userSettings // These are settings of the Instance Owner (SaaS subscriber)
+        userSettings,
+        sock
     } = ctx;
 
     const isText = typeof body === "string" && body.length > 0;
@@ -33,74 +34,83 @@ module.exports = async function router(m, ctx) {
 
     const cmdName = aliases.get(cmdNameRaw) || cmdNameRaw;
     const messageType = getMessageType(m);
-
-    // ================= DYNAMIC IDENTITY INJECTION =================
-    // Hapa tunatengeneza 'Identity' ya mtumiaji wa sasa ili kuzuia 
-    // plugins zisitumie jina la "Lupin" kwa kila mtu.
     
     const pushName = m.pushName || "User";
-    const senderNumber = m.sender.split("@")[0];
+    const senderNumber = m.sender?.split("@")[0] || "0";
 
-    // Tunatengeneza 'modifiedSettings' ambayo itazidanganya plugins zako
+    // Dynamic Identity Injection
     const modifiedSettings = {
         ...userSettings,
         userName: pushName,
         userNumber: senderNumber,
-        // Kama plugin ina 'style' ya 'girl' inayotaja Lupin, 
-        // tunaweza kuifanya iwe dynamic hapa (Placeholder logic)
+        botName: userSettings?.M_bot_name || "VEX Bot",
+        ownerName: userSettings?.M_owner_name || pushName
     };
 
-    // ================= CONTEXT WRAPPER =================
     const context = {
         args,
-        userSettings: modifiedSettings, // Injected with dynamic identity
+        userSettings: modifiedSettings,
         cache,
         supabase,
         commands,
-        prefix, // Current subscriber's prefix
-        pushName
+        prefix,
+        pushName,
+        isGroup: m.key.remoteJid.endsWith('@g.us'),
+        sender: m.sender,
+        reply: async (text) => sock.sendMessage(m.key.remoteJid, { text }, { quoted: m })
     };
 
-    // ================= OBSERVER MATCHING =================
-    let matchedObservers = null;
-    if (observers.length > 0) {
-        matchedObservers = [];
-        for (let i = 0; i < observers.length; i++) {
-            const obs = observers[i];
+    // Observer Logic (SaaS Compatible)
+    let matchedObservers = [];
+    if (observers && (observers.length > 0 || observers.size > 0)) {
+        const obsList = Array.isArray(observers) ? observers : Array.from(observers.values());
+        for (const obs of obsList) {
             try {
                 const triggerCtx = { body, messageType, userSettings: modifiedSettings, cache };
                 if (typeof obs.trigger === "function") {
                     if (obs.trigger(m, triggerCtx)) matchedObservers.push(obs);
-                } else {
+                } else if (obs.type === messageType || obs.type === "all") {
                     matchedObservers.push(obs);
                 }
-            } catch {}
+            } catch (e) {}
         }
     }
 
-    // ================= COMMAND EXECUTION =================
+    // Command Logic with SaaS Interceptor
     if (isCommand && cmdName) {
         const command = commands.get(cmdName);
 
         if (command && typeof command.execute === "function") {
-            
-            // --- AUTO-ADAPT PLUGINS (The "Lupin" & "Prefix" Fix) ---
-            // Hapa tunatengeneza 'Proxy' ya sock.sendMessage ili kubadilisha 
-            // text yoyote inayotoka kwenye plugin kabla haijafika WhatsApp.
-            
+            // PROXY: Intercepts outgoing messages to replace "Lupin" with Subscriber info
+            const sockProxy = new Proxy(sock, {
+                get(target, prop) {
+                    if (prop === 'sendMessage') {
+                        return async (jid, content, options) => {
+                            if (content && typeof content.text === 'string') {
+                                content.text = content.text
+                                    .replace(/Lupin/gi, modifiedSettings.ownerName)
+                                    .replace(/Mentor Brian/gi, modifiedSettings.ownerName);
+                            }
+                            return target.sendMessage(jid, content, options);
+                        };
+                    }
+                    return target[prop];
+                }
+            });
+
             return {
                 type: "command",
                 command,
                 context: {
                     ...context,
-                    // Hapa unaweza kuongeza 'interceptors' kama unahitaji kubadilisha text ya plugin 100+ kwa nguvu
+                    sock: sockProxy,
+                    execute: () => command.execute(m, sockProxy, context)
                 }
             };
         }
-        return { type: "ignore" };
     }
 
-    if (matchedObservers && matchedObservers.length > 0) {
+    if (matchedObservers.length > 0) {
         return {
             type: "observer",
             list: matchedObservers,
@@ -111,16 +121,20 @@ module.exports = async function router(m, ctx) {
     return { type: "ignore" };
 };
 
-// ================= HELPER FUNCTIONS =================
-
 function getMessageType(m) {
     const msg = m.message || {};
-    if (msg.protocolMessage) return "protocol";
-    if (msg.viewOnceMessageV2 || msg.viewOnceMessageV2Extension) return "viewOnce";
-    if (msg.imageMessage) return "image";
-    if (msg.videoMessage) return "video";
-    if (msg.audioMessage) return "audio";
-    if (msg.documentMessage) return "document";
-    if (msg.extendedTextMessage || msg.conversation) return "text";
-    return "unknown";
+    const type = Object.keys(msg)[0];
+    const types = {
+        conversation: "text",
+        imageMessage: "image",
+        videoMessage: "video",
+        audioMessage: "audio",
+        documentMessage: "document",
+        extendedTextMessage: "text",
+        protocolMessage: "protocol",
+        stickerMessage: "sticker",
+        viewOnceMessageV2: "viewOnce",
+        viewOnceMessageV2Extension: "viewOnce"
+    };
+    return types[type] || "unknown";
 }
