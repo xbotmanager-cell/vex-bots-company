@@ -1,19 +1,10 @@
 // ========================================================
-// VEX SYSTEM - MULTI-INSTANCE SAAS ENGINE (FIXED)
+// VEX SYSTEM - MULTI-INSTANCE SAAS ENGINE (FINAL FIXED)
 // ========================================================
 
 const pino = require("pino");
 const fs = require("fs");
-const path = require("path");
 const QRCode = require("qrcode");
-
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore
-} = require("@whiskeysockets/baileys");
-
 const { createClient } = require("@supabase/supabase-js");
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
@@ -24,17 +15,17 @@ const pairingTemplate = (userId) => `
 <html>
 <head>
 <title>VEX Pairing</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="/socket.io/socket.io.js"></script>
 </head>
-<body style="background:#000;color:white;text-align:center;padding-top:50px;">
+<body style="background:#000;color:white;text-align:center;padding-top:50px;font-family:sans-serif;">
 <h2>Scan QR</h2>
 <img id="qr" width="250"/>
 <p id="status">Waiting...</p>
 
 <script>
 const socket = io();
-
-socket.emit("join_pairing", "${userId}");
+socket.emit("join", "${userId}");
 
 socket.on("vex_qr", (d) => {
     document.getElementById("qr").src = d.qr;
@@ -62,7 +53,16 @@ class VexInstance {
 
         console.log("PAIRING:", this.userId);
 
+        // 🔥 IMPORTANT FIX: dynamic import (ESM fix)
+        const {
+            default: makeWASocket,
+            useMultiFileAuthState,
+            fetchLatestBaileysVersion,
+            makeCacheableSignalKeyStore
+        } = await import("@whiskeysockets/baileys");
+
         const sessionPath = `./temp_sessions/${this.userId}`;
+
         if (!fs.existsSync(sessionPath)) {
             fs.mkdirSync(sessionPath, { recursive: true });
         }
@@ -77,19 +77,15 @@ class VexInstance {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" }))
             },
-            printQRInTerminal: false
+            printQRInTerminal: false,
+            browser: ["VEX Pairing", "Chrome", "1.0"]
         });
 
-        // SOCKET JOIN HANDLER
-        this.core.io.on("connection", (socket) => {
-            socket.on("join_pairing", (uid) => {
-                if (uid === this.userId) {
-                    socket.join(this.userId);
-                }
-            });
-        });
+        // send UI to frontend
+        this.core.io.to(this.userId).emit("render_portal", pairingTemplate(this.userId));
 
         this.sock.ev.on("connection.update", async (update) => {
+
             const { connection, qr } = update;
 
             // 🔥 SEND QR
@@ -111,20 +107,23 @@ class VexInstance {
                     "utf-8"
                 );
 
-                const encoded = Buffer.from(credsRaw).toString("base64");
+                const encoded = "VEX~" + Buffer.from(credsRaw).toString("base64");
 
                 await supabase.from("M_sessions").upsert({
                     M_user_id: this.userId,
                     M_session_data: { creds: encoded },
-                    M_pairing_status: "connected"
+                    M_pairing_status: "connected",
+                    M_updated_at: new Date()
                 });
 
                 this.core.io.to(this.userId).emit("vex_done");
 
                 console.log("CONNECTED:", this.userId);
+
+                // optional logout to clear pairing session
+                await this.sock.logout().catch(() => {});
             }
 
-            // ❌ CLOSED
             if (connection === "close") {
                 console.log("DISCONNECTED:", this.userId);
             }
@@ -138,19 +137,25 @@ class VexInstance {
 
         console.log("BOOT:", this.userId);
 
+        const {
+            default: makeWASocket,
+            fetchLatestBaileysVersion,
+            makeCacheableSignalKeyStore
+        } = await import("@whiskeysockets/baileys");
+
         const { data: session } = await supabase
             .from("M_sessions")
             .select("*")
             .eq("M_user_id", this.userId)
             .single();
 
-        if (!session) throw new Error("NO SESSION");
+        if (!session || !session.M_session_data?.creds) {
+            throw new Error("NO SESSION");
+        }
 
-        const decoded = Buffer.from(
-            session.M_session_data.creds,
-            "base64"
-        ).toString("utf-8");
+        const raw = session.M_session_data.creds.replace("VEX~", "");
 
+        const decoded = Buffer.from(raw, "base64").toString("utf-8");
         const creds = JSON.parse(decoded);
 
         const { version } = await fetchLatestBaileysVersion();
@@ -161,7 +166,8 @@ class VexInstance {
             auth: {
                 creds,
                 keys: makeCacheableSignalKeyStore({}, pino({ level: "silent" }))
-            }
+            },
+            browser: ["VEX CORE", "Safari", "3.0"]
         });
 
         this.registerEvents();
@@ -173,6 +179,7 @@ class VexInstance {
         this.sock.ev.on("connection.update", async ({ connection }) => {
 
             if (connection === "open") {
+
                 console.log("LIVE:", this.userId);
 
                 await supabase
