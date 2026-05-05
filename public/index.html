@@ -1,382 +1,235 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VEX HOST | High-Performance VPS</title>
-    <!-- Supabase JS Library -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
-    
-    <style>
-        :root {
-            --primary-glow: #a855f7;
-            --bg-color: #050505;
-            --glass-bg: rgba(255, 255, 255, 0.03);
-            --glass-border: rgba(255, 255, 255, 0.1);
-            --text-color: #ffffff;
-            --card-radius: 20px;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-        body.light-mode {
-            --bg-color: #f0f0f0;
-            --text-color: #1a1a1a;
-            --glass-bg: rgba(0, 0, 0, 0.05);
-            --glass-border: rgba(0, 0, 0, 0.1);
-        }
+<title>VEX HOST</title>
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Poppins', sans-serif;
-            transition: all 0.3s ease;
-        }
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            overflow-x: hidden;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
+<style>
+:root {
+    --bg:#050505;
+    --text:#ffffff;
+    --glass:rgba(255,255,255,0.05);
+    --border:rgba(255,255,255,0.1);
+    --main:#a855f7;
+}
 
-        .glow-sphere {
-            position: absolute;
-            width: 400px;
-            height: 400px;
-            background: var(--primary-glow);
-            filter: blur(180px);
-            opacity: 0.15;
-            z-index: -1;
-            border-radius: 50%;
-        }
+body.light {
+    --bg:#f1f1f1;
+    --text:#111;
+    --glass:rgba(0,0,0,0.05);
+    --border:rgba(0,0,0,0.1);
+}
 
-        header {
-            position: fixed;
-            top: 20px;
-            width: 90%;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 15px 30px;
-            background: var(--glass-bg);
-            backdrop-filter: blur(15px);
-            border: 1px solid var(--glass-border);
-            border-radius: var(--card-radius);
-            z-index: 100;
-        }
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:sans-serif;
+}
 
-        .brand {
-            font-weight: 600;
-            font-size: 1.5rem;
-            color: var(--primary-glow);
-            text-shadow: 0 0 10px var(--primary-glow);
-        }
+body{
+    background:var(--bg);
+    color:var(--text);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    overflow-x:hidden;
+}
 
-        .main-container {
-            margin-top: 150px;
-            text-align: center;
-            max-width: 800px;
-            padding: 20px;
-            z-index: 10;
-        }
+/* MOBILE LOCK */
+@media(min-width:600px){
+    body::before{
+        content:"Open on Mobile";
+        position:fixed;
+        top:0;left:0;
+        width:100%;
+        height:100%;
+        background:black;
+        color:white;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        z-index:9999;
+    }
+}
 
-        .hero-title {
-            font-size: 3.5rem;
-            margin-bottom: 20px;
-            line-height: 1.2;
-            font-weight: 600;
-        }
+.container{
+    width:100%;
+    max-width:420px;
+    padding:20px;
+}
 
-        .typing-container {
-            font-size: 1.2rem;
-            opacity: 0.8;
-            margin-bottom: 40px;
-            min-height: 50px;
-        }
+.card{
+    background:var(--glass);
+    border:1px solid var(--border);
+    padding:20px;
+    border-radius:20px;
+    margin-top:20px;
+}
 
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin: 40px 0;
-            width: 100%;
-        }
+input{
+    width:100%;
+    padding:12px;
+    margin-top:10px;
+    background:black;
+    color:white;
+    border:1px solid var(--border);
+    border-radius:10px;
+}
 
-        .feature-item {
-            padding: 25px;
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            border-radius: 15px;
-            text-align: left;
-        }
+button{
+    width:100%;
+    padding:14px;
+    margin-top:15px;
+    border:none;
+    border-radius:12px;
+    background:var(--main);
+    color:white;
+    font-weight:bold;
+}
 
-        .feature-item h3 {
-            color: var(--primary-glow);
-            margin-bottom: 10px;
-        }
+.toggle{
+    text-align:center;
+    margin-top:10px;
+    font-size:12px;
+    opacity:0.7;
+}
 
-        .btn-start {
-            padding: 18px 50px;
-            background: var(--primary-glow);
-            color: white;
-            border: none;
-            border-radius: 50px;
-            font-size: 1.2rem;
-            font-weight: 600;
-            cursor: pointer;
-            box-shadow: 0 0 25px rgba(168, 85, 247, 0.4);
-            margin-bottom: 50px;
-        }
+.top{
+    display:flex;
+    justify-content:space-between;
+    margin-bottom:20px;
+}
 
-        .btn-start:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 0 40px rgba(168, 85, 247, 0.6);
-        }
-
-        .glass-card {
-            display: none;
-            width: 450px;
-            margin: 100px auto;
-            padding: 40px;
-            background: var(--glass-bg);
-            backdrop-filter: blur(25px);
-            border: 1px solid var(--glass-border);
-            border-radius: var(--card-radius);
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-            animation: slideUp 0.5s ease;
-        }
-
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .input-group {
-            margin-bottom: 20px;
-            text-align: left;
-        }
-
-        .input-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-            opacity: 0.8;
-        }
-
-        .input-group input {
-            width: 100%;
-            padding: 12px 15px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--glass-border);
-            border-radius: 12px;
-            color: var(--text-color);
-            outline: none;
-        }
-
-        .input-group input:focus {
-            border-color: var(--primary-glow);
-            box-shadow: 0 0 10px rgba(168, 85, 247, 0.2);
-        }
-
-        .toggle-text {
-            margin-top: 20px;
-            font-size: 0.85rem;
-            opacity: 0.7;
-            cursor: pointer;
-            text-align: center;
-        }
-
-        .toggle-text span {
-            color: var(--primary-glow);
-            font-weight: 600;
-        }
-
-        .theme-btn {
-            background: none;
-            border: 1px solid var(--glass-border);
-            color: var(--text-color);
-            padding: 8px 20px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 0.8rem;
-        }
-
-        footer {
-            margin-top: auto;
-            padding: 20px;
-            opacity: 0.6;
-            font-size: 0.8rem;
-            text-align: center;
-        }
-    </style>
+.theme{
+    padding:5px 10px;
+    border:1px solid var(--border);
+    border-radius:10px;
+    background:none;
+    color:var(--text);
+}
+</style>
 </head>
+
 <body>
 
-    <div class="glow-sphere" style="top: -100px; left: -100px;"></div>
-    <div class="glow-sphere" style="bottom: 100px; right: -100px;"></div>
+<div class="container">
 
-    <header>
-        <div class="brand">VEX HOST</div>
-        <button class="theme-btn" onclick="toggleTheme()">Switch Appearance</button>
-    </header>
+<div class="top">
+    <h3>VEX HOST</h3>
+    <button class="theme" onclick="toggleTheme()">Theme</button>
+</div>
 
-    <div id="hero-section" class="main-container">
-        <h1 class="hero-title">High-Performance <br> WhatsApp <span style="color: var(--primary-glow)">VPS Hosting</span></h1>
-        <div class="typing-container" id="typing-text"></div>
+<!-- SIGNUP -->
+<div id="signup" class="card">
+<h3>Create Account</h3>
 
-        <div class="features-grid">
-            <div class="feature-item">
-                <h3>Dedicated Resources</h3>
-                <p>Enjoy exclusive CPU and RAM allocation for your automation scripts. No shared lag, just pure power.</p>
-            </div>
-            <div class="feature-item">
-                <h3>VEX Engine v2.0</h3>
-                <p>Engineered by Lupin Starnley. Optimized kernel for instant socket connections and minimal ping.</p>
-            </div>
-            <div class="feature-item">
-                <h3>Global Uptime</h3>
-                <p>Our server clusters ensure 99.9% uptime. Your automation stays online even when you are offline.</p>
-            </div>
-            <div class="feature-item">
-                <h3>Secure Terminal</h3>
-                <p>Encrypted access protocols protect your private session data from unauthorized intrusions.</p>
-            </div>
-            <div class="feature-item">
-                <h3>Auto-Scaling</h3>
-                <p>Resources expand automatically during peak traffic to maintain optimal performance levels.</p>
-            </div>
-            <div class="feature-item">
-                <h3>Direct API Link</h3>
-                <p>Seamless integration with external endpoints for real-time data synchronization across nodes.</p>
-            </div>
-        </div>
+<input id="reg-user" placeholder="Username">
+<input id="reg-email" placeholder="Email">
+<input id="reg-pass" type="password" placeholder="Password">
 
-        <button class="btn-start" onclick="showForm('signup')">Initialize Server Access</button>
-        <p style="opacity: 0.5; font-size: 0.9rem; max-width: 600px; margin: 0 auto 50px;">
-            Developed by <strong>Lupin Starnley</strong>. This ecosystem is crafted for professional developers who demand elite infrastructure for world-class WhatsApp automation.
-        </p>
-    </div>
+<button onclick="signup()">Create</button>
 
-    <div id="signup-card" class="glass-card">
-        <h2 style="margin-bottom: 10px; text-align: center;">Join the Elite</h2>
-        <p style="text-align: center; opacity: 0.6; margin-bottom: 30px; font-size: 0.9rem;">Provision your dedicated workspace in seconds.</p>
-        <div class="input-group">
-            <label>Master Username</label>
-            <input type="text" id="reg-user" placeholder="Enter your identity">
-        </div>
-        <div class="input-group">
-            <label>Admin Email</label>
-            <input type="email" id="reg-email" placeholder="admin@vexhost.com">
-        </div>
-        <div class="input-group">
-            <label>Access Key (Password)</label>
-            <input type="password" id="reg-pass" placeholder="Create a secure key">
-        </div>
-        <button id="signup-btn" class="btn-start" style="width: 100%; margin-bottom: 0;" onclick="handleSignUp()">Deploy Account</button>
-        <button id="next-btn-signup" class="btn-start" style="width: 100%; margin-bottom: 0; display: none;" onclick="navigateToHome()">Proceed to Dashboard</button>
-        <p class="toggle-text" onclick="showForm('login')">Already registered? <span>Sign In</span></p>
-    </div>
+<div class="toggle" onclick="showLogin()">Already have account? Login</div>
+</div>
 
-    <div id="login-card" class="glass-card">
-        <h2 style="margin-bottom: 10px; text-align: center;">Master Login</h2>
-        <p style="text-align: center; opacity: 0.6; margin-bottom: 30px; font-size: 0.9rem;">Access your server dashboard.</p>
-        <div class="input-group">
-            <label>Admin Email</label>
-            <input type="text" id="log-email" placeholder="admin@vexhost.com">
-        </div>
-        <div class="input-group">
-            <label>Access Key</label>
-            <input type="password" id="log-pass" placeholder="••••••••">
-        </div>
-        <button id="login-btn" class="btn-start" style="width: 100%; margin-bottom: 0;" onclick="handleLogin()">Authenticate Access</button>
-        <button id="next-btn-login" class="btn-start" style="width: 100%; margin-bottom: 0; display: none;" onclick="navigateToHome()">Enter Dashboard</button>
-        <p class="toggle-text" onclick="showForm('signup')">Need a node? <span>Register Account</span></p>
-    </div>
+<!-- LOGIN -->
+<div id="login" class="card" style="display:none;">
+<h3>Login</h3>
 
-    <footer>
-        &copy; 2026 VEX HOST. Engineered & Maintained by Lupin Starnley. All Rights Reserved.
-    </footer>
+<input id="log-email" placeholder="Email">
+<input id="log-pass" type="password" placeholder="Password">
 
-    <script>
-        // CORE CONFIG
-        const SB_URL = "https://rxkwkapxzcmpjsegpbpv.supabase.co";
-        const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4a3drYXB4emNtcGpzZWdwYnB2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzA1MTQyMywiZXhwIjoyMDkyNjI3NDIzfQ.cFAslTZh7j30pCLB2r80k7FpPJ3XeWxadTvbQ4hEkhI";
-        const vexDB = supabase.createClient(SB_URL, SB_KEY);
+<button onclick="login()">Login</button>
 
-        const texts = ["Enterprise VPS Hosting.", "Managed Cloud Nodes.", "Instant Deployment.", "Lupin Starnley Infrastructure."];
-        let count = 0, index = 0, currentText = "", letter = "";
+<div class="toggle" onclick="showSignup()">Create account</div>
+</div>
 
-        (function type() {
-            if (count === texts.length) count = 0;
-            currentText = texts[count];
-            letter = currentText.slice(0, ++index);
-            document.getElementById('typing-text').textContent = letter;
-            if (letter.length === currentText.length) { count++; index = 0; setTimeout(type, 2000); }
-            else { setTimeout(type, 100); }
-        }());
+</div>
 
-        function showForm(type) {
-            document.getElementById('hero-section').style.display = 'none';
-            document.getElementById('signup-card').style.display = 'none';
-            document.getElementById('login-card').style.display = 'none';
-            if(type === 'signup') document.getElementById('signup-card').style.display = 'block';
-            if(type === 'login') document.getElementById('login-card').style.display = 'block';
+<script>
+const supabaseClient = supabase.createClient(
+    "https://rxkwkapxzcmpjsegpbpv.supabase.co",
+    "PUBLIC_ANON_KEY_ONLY" // ⚠️ USIWEKE SERVICE ROLE HAPA
+);
+
+/* THEME */
+function toggleTheme(){
+    document.body.classList.toggle("light");
+}
+
+/* NAV */
+function showLogin(){
+    document.getElementById("signup").style.display="none";
+    document.getElementById("login").style.display="block";
+}
+
+function showSignup(){
+    document.getElementById("signup").style.display="block";
+    document.getElementById("login").style.display="none";
+}
+
+/* SIGNUP */
+async function signup(){
+    const email = regEmail();
+    const pass = regPass();
+    const user = regUser();
+
+    if(!email || !pass || !user) return alert("Fill all");
+
+    const {data,error} = await supabaseClient.auth.signUp({
+        email,
+        password:pass,
+        options:{
+            data:{username:user}
         }
+    });
 
-        function toggleTheme() { document.body.classList.toggle('light-mode'); }
+    if(error) return alert(error.message);
 
-        async function handleSignUp() {
-            const email = document.getElementById('reg-email').value;
-            const password = document.getElementById('reg-pass').value;
-            const username = document.getElementById('reg-user').value;
+    localStorage.setItem("vex_user", email);
 
-            if(!email || !password || !username) return alert("System prompt: Please fill all administrative fields.");
+    alert("Account created");
+}
 
-            const { data, error } = await vexDB.auth.signUp({
-                email,
-                password,
-                options: { data: { full_name: username } }
-            });
+/* LOGIN */
+async function login(){
+    const email = logEmail();
+    const pass = logPass();
 
-            if (error) {
-                alert("Protocol Error: " + error.message);
-            } else {
-                alert("Node provisioned successfully. Master Identity: " + username);
-                document.getElementById('signup-btn').style.display = 'none';
-                document.getElementById('next-btn-signup').style.display = 'block';
-            }
-        }
+    const {data,error} = await supabaseClient.auth.signInWithPassword({
+        email,
+        password:pass
+    });
 
-        async function handleLogin() {
-            const email = document.getElementById('log-email').value;
-            const password = document.getElementById('log-pass').value;
+    if(error) return alert("Wrong login");
 
-            const { data, error } = await vexDB.auth.signInWithPassword({ email, password });
+    localStorage.setItem("vex_user", email);
 
-            if (error) {
-                alert("Access Denied: Administrative credentials rejected.");
-            } else {
-                alert("Authentication Successful. Ready for terminal access.");
-                document.getElementById('login-btn').style.display = 'none';
-                document.getElementById('next-btn-login').style.display = 'block';
-            }
-        }
+    window.location.href="home.html";
+}
 
-        function navigateToHome() {
-            window.location.href = "home.html";
-        }
+/* HELPERS */
+const regEmail = ()=>document.getElementById("reg-email").value;
+const regPass = ()=>document.getElementById("reg-pass").value;
+const regUser = ()=>document.getElementById("reg-user").value;
 
-        // Automatic Redirection Shield
-        window.onload = async () => {
-            const { data: { session } } = await vexDB.auth.getSession();
-            // System will NOT redirect automatically to home.html if session exists
-            // This ensures manual user control via UI prompts
-        }
-    </script>
+const logEmail = ()=>document.getElementById("log-email").value;
+const logPass = ()=>document.getElementById("log-pass").value;
+
+/* AUTO REMEMBER */
+window.onload = async ()=>{
+    const { data } = await supabaseClient.auth.getSession();
+
+    if(data.session){
+        window.location.href="home.html";
+    }
+};
+</script>
+
 </body>
 </html>
