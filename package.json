@@ -3,7 +3,7 @@
   "version": "1.2.0",
   "description": "VEX ARSENAL: Advanced AI, Cyber-Intelligence, Marketplace & Media Extraction Suite",
   "main": "index.js",
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
