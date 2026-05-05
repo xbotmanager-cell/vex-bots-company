@@ -1,13 +1,16 @@
 // ========================================================
-// VEX SYSTEM - SUPABASE AUTH PROVIDER (SAAS READY)
+// VEX SYSTEM - SUPABASE AUTH PROVIDER (VEX~ OPTIMIZED)
 // Author: Lupin Starnley Jimmoh
-// Purpose: Store WhatsApp sessions in Cloud Database (M_sessions)
+// Purpose: Optimized Cloud Session Management for SaaS
 // ========================================================
 
 module.exports = async (supabase, userId) => {
-    // --- DYNAMIC IMPORT FOR NODE V22 & BAILEYS PROTO ---
     const { proto, BufferJSON, initAuthCreds } = await import("@whiskeysockets/baileys");
 
+    /**
+     * Writes session data to Supabase M_sessions table.
+     * Uses UPSERT with a composite key logic for SaaS isolation.
+     */
     const writeData = async (data, id) => {
         try {
             const json = JSON.stringify(data, BufferJSON.replacer);
@@ -16,13 +19,17 @@ module.exports = async (supabase, userId) => {
                 .upsert({ 
                     M_user_id: userId, 
                     M_session_id: id, 
-                    M_session_data: json 
+                    M_session_data: { payload: json },
+                    M_updated_at: new Date()
                 }, { onConflict: 'M_user_id, M_session_id' });
         } catch (e) {
-            console.error(`[DB ERROR] Failed to write ${id}:`, e.message);
+            console.error(`[VEX DB] Write Error (${id}):`, e.message);
         }
     };
 
+    /**
+     * Reads session data from Supabase.
+     */
     const readData = async (id) => {
         try {
             const { data, error } = await supabase
@@ -32,13 +39,16 @@ module.exports = async (supabase, userId) => {
                 .eq("M_session_id", id)
                 .maybeSingle();
 
-            if (error || !data) return null;
-            return JSON.parse(data.M_session_data, BufferJSON.reviver);
+            if (error || !data || !data.M_session_data) return null;
+            return JSON.parse(data.M_session_data.payload, BufferJSON.reviver);
         } catch (e) {
             return null;
         }
     };
 
+    /**
+     * Removes session data from Supabase.
+     */
     const removeData = async (id) => {
         try {
             await supabase
@@ -47,11 +57,11 @@ module.exports = async (supabase, userId) => {
                 .eq("M_user_id", userId)
                 .eq("M_session_id", id);
         } catch (e) {
-            console.error(`[DB ERROR] Failed to remove ${id}:`, e.message);
+            console.error(`[VEX DB] Delete Error (${id}):`, e.message);
         }
     };
 
-    // --- FIX: INITIALIZE VALID BAILEYS CREDS ---
+    // Initialize credentials from DB or create new ones
     const creds = await readData("creds") || initAuthCreds();
 
     return {
