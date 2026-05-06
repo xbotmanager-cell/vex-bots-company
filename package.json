@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "VEX ARSENAL: Advanced AI, Cyber-Intelligence, Marketplace & Media Extraction Suite",
   "main": "index.js",
+  "type": "commonJS",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
@@ -12,15 +13,13 @@
   "author": "Lupin Starnley Jimmoh (Mentor Brian)",
   "license": "MIT",
   "engines": {
-    "node": "20.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.42.0",
-    "@whiskeysockets/baileys": "^7.0.0-rc.9",
-    "@adiwajshing/keyed-db": "^0.2.4",
+    "@whiskeysockets/baileys": "^6.7.16",
+    "@supabase/supabase-js": "^2.43.0",
     "@google/generative-ai": "^0.11.0",
-    "socket.io": "^4.7.5",
-    "socket.io-client": "^4.7.5",
+    "@adiwajshing/keyed-db": "^0.2.4",
     "axios": "^1.6.8",
     "cheerio": "^1.0.0-rc.12",
     "fluent-ffmpeg": "^2.1.2",
@@ -39,6 +38,8 @@
     "yt-search": "^2.10.4",
     "ytdl-core": "latest",
     "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "socket.io-client": "^4.7.5",
     "pino": "^8.20.0",
     "qrcode-terminal": "^0.12.0",
     "form-data": "^4.0.0",
