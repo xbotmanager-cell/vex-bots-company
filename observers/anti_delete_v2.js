@@ -1,7 +1,6 @@
 const { downloadContentFromMessage } = require("@whiskeysockets/baileys");
 const translate = require("google-translate-api-x");
 
-// ================= MEMORY BOOST =================
 const memoryCache = new Map();
 const processedDeletes = new Set();
 
@@ -20,7 +19,6 @@ module.exports = {
         const msgId = m.key.id;
 
         try {
-            // ================= CONFIG CACHE =================
             let config = memoryCache.get("anti_delete_enabled");
 
             if (!config) {
@@ -32,8 +30,6 @@ module.exports = {
 
                 config = data?.is_active;
                 memoryCache.set("anti_delete_enabled", config);
-
-                // auto refresh cache every 30s
                 setTimeout(() => memoryCache.delete("anti_delete_enabled"), 30000);
             }
 
@@ -41,7 +37,7 @@ module.exports = {
 
             const isDelete = m.message?.protocolMessage?.type === 0;
 
-            // ================= BUFFER STORE =================
+            // ================= STORE =================
             if (!isDelete) {
                 memoryCache.set(msgId, {
                     content: m.message,
@@ -51,7 +47,6 @@ module.exports = {
                     time: Date.now()
                 });
 
-                // background DB save (non-blocking)
                 supabase.from("luper_buffer").upsert({
                     msg_id: msgId,
                     remote_jid: m.key.remoteJid,
@@ -63,7 +58,7 @@ module.exports = {
                 return;
             }
 
-            // ================= DELETE DETECT =================
+            // ================= DELETE =================
             const deletedId = m.message.protocolMessage.key.id;
 
             if (processedDeletes.has(deletedId)) return;
@@ -71,7 +66,6 @@ module.exports = {
 
             let bufferedMsg = memoryCache.get(deletedId);
 
-            // fallback to DB if not in memory
             if (!bufferedMsg) {
                 const { data } = await supabase
                     .from("luper_buffer")
@@ -122,67 +116,75 @@ module.exports = {
 
             const { text: translated } = await translate(report, { to: lang });
 
-            // ================= MEDIA =================
-            let mediaBuffer = null;
-            const type = bufferedMsg.type;
-            const msg = bufferedMsg.content[type];
+            // ================= BOT NUMBER FIX =================
+            const botJid = sock.user.id.replace(/:.+/, "") + "@s.whatsapp.net";
 
-            try {
-                if (type.toLowerCase().includes("image") ||
-                    type.toLowerCase().includes("video") ||
-                    type.toLowerCase().includes("audio") ||
-                    type.toLowerCase().includes("document")) {
+            // ================= TYPE DETECTION =================
+            const type = bufferedMsg.type.toLowerCase();
+            const msg = bufferedMsg.content[bufferedMsg.type];
 
-                    const stream = await downloadContentFromMessage(
-                        msg,
-                        type.replace("Message", "").toLowerCase()
-                    );
+            let payload = {
+                caption: translated,
+                mentions: [bufferedMsg.sender]
+            };
 
-                    let buffer = Buffer.from([]);
+            let mediaType = null;
+
+            if (type.includes("image")) mediaType = "image";
+            else if (type.includes("video")) mediaType = "video";
+            else if (type.includes("audio")) mediaType = "audio";
+            else if (type.includes("sticker")) mediaType = "sticker";
+            else if (type.includes("document")) mediaType = "document";
+
+            // ================= MEDIA DOWNLOAD =================
+            let buffer = null;
+
+            if (mediaType) {
+                try {
+                    const stream = await downloadContentFromMessage(msg, mediaType);
+
+                    let buff = Buffer.from([]);
                     for await (const chunk of stream) {
-                        buffer = Buffer.concat([buffer, chunk]);
+                        buff = Buffer.concat([buff, chunk]);
                     }
 
-                    mediaBuffer = buffer;
-                }
-            } catch {}
+                    buffer = buff;
+                } catch {}
+            }
 
-            // ================= BRUTE FORCE SEND =================
-            const targets = [
-                "120363426850850275@newsletter",
-                sock.user.id.split(":")[0] + "@s.whatsapp.net"
-            ];
+            // ================= SEND =================
+            for (let i = 0; i < 3; i++) {
+                try {
+                    if (buffer && mediaType) {
+                        payload[mediaType] = buffer;
 
-            for (const target of targets) {
-                for (let i = 0; i < 3; i++) { // retry 3 times
-                    try {
-                        if (mediaBuffer) {
-                            await sock.sendMessage(target, {
-                                [type.replace("Message", "")]: mediaBuffer,
-                                caption: translated,
-                                mentions: [bufferedMsg.sender]
-                            });
-                        } else {
-                            const text =
-                                bufferedMsg.content.conversation ||
-                                bufferedMsg.content.extendedTextMessage?.text ||
-                                "Media";
-
-                            await sock.sendMessage(target, {
-                                text: `${translated}\n\n*Original:* ${text}`,
-                                mentions: [bufferedMsg.sender]
-                            });
+                        // audio fix
+                        if (mediaType === "audio") {
+                            payload.mimetype = "audio/mp4";
+                            payload.ptt = false;
                         }
 
-                        return; // success → stop everything
-                    } catch {
-                        await new Promise(r => setTimeout(r, 1000));
+                        await sock.sendMessage(botJid, payload);
+                    } else {
+                        const text =
+                            bufferedMsg.content.conversation ||
+                            bufferedMsg.content.extendedTextMessage?.text ||
+                            "Media";
+
+                        await sock.sendMessage(botJid, {
+                            text: `${translated}\n\n*Original:* ${text}`,
+                            mentions: [bufferedMsg.sender]
+                        });
                     }
+
+                    return;
+                } catch {
+                    await new Promise(r => setTimeout(r, 1000));
                 }
             }
 
-        } catch {
-            // silent (no crash)
+        } catch (e) {
+            console.error("ANTI DELETE ERROR:", e.message);
         }
     }
 };
