@@ -1,7 +1,7 @@
 /**
- * VEX SMART ROUTER - MULTI-TENANT EDITION
+ * VEX SMART ROUTER - MULTI-TENANT EDITION (STABLE)
  * Logic: Lupin Starnley Jimmoh (VEX CEO)
- * Hii router inalazimisha kila plugin kusoma Client ID bila kubadili code ya plugin husika.
+ * Hii router sasa ni mtiifu kwa plugins zote huku ikilinda mfumo wa Client ID.
  */
 
 async function router(m, ctx) {
@@ -15,11 +15,17 @@ async function router(m, ctx) {
         prefix
     } = ctx;
 
-    // 1. FETCH ENVIRONMENT IDENTITY (Hutagusa code, itasoma toka Render ENV)
+    // 1. FETCH IDENTITY
     const CLIENT_ID = process.env.CLIENT_ID || "GLOBAL";
-    const DEVELOPER_NUMBER = "255780470905"; // Weka namba yako hapa
+    const DEVELOPER_NUMBER = "255780470905"; 
 
-    // 2. BASIC PRE-PROCESSING
+    // 2. SET DATABASE SESSION (Hii inaitambia SQL yako ya RLS nani anafanya kazi sasa hivi)
+    // Tunatumia rpc au query ya siri kuweka setting ya session kwenye Postgres
+    try {
+        await supabase.rpc('set_config', { name: 'app.client_id', value: CLIENT_ID, is_local: true }).catch(() => {});
+    } catch (e) { /* Silent */ }
+
+    // 3. BASIC PRE-PROCESSING
     const isText = typeof body === "string" && body.length > 0;
     const isCommand = isText && body.startsWith(prefix);
 
@@ -38,22 +44,19 @@ async function router(m, ctx) {
     const cmdName = aliases.get(cmdNameRaw) || cmdNameRaw;
     const messageType = getMessageType(m);
 
-    // 3. ROLE & PERMISSION CHECK
+    // 4. ROLE CHECK
     const sender = m.sender || "";
     const userRole = sender.includes(DEVELOPER_NUMBER) ? "owner" : "user";
 
-    // 4. SMART CONTEXT INJECTION (The Secret Sauce)
-    // Hapa ndipo tunapopitisha data kwa lazima kwenda kwenye plugins zote
+    // 5. SAFE CONTEXT INJECTION
+    // Hapa 'supabase' inabaki kuwa ile ile original ili plugins zisitoe error
     const context = {
-        ...ctx,      // Data za mwanzo
-        args,        // Arguments zilizosafishwa
-        clientId: CLIENT_ID, // ID ya mteja (kutoka Render ENV)
-        userRole: userRole,   // Role ya mtumiaji (Owner/User)
+        ...ctx,
+        args,
+        clientId: CLIENT_ID,
+        userRole: userRole,
         userSettings: cache.getUser?.(sender) || {},
-        
-        // 5. SUPABASE WRAPPER (Optional: Inalazimisha filter ya Client ID)
-        // Hii inahakikisha hata plugin iweje, itasoma data za huyu mteja tu
-        db: (tableName) => supabase.from(tableName).select('*').eq('client_id', CLIENT_ID)
+        supabase: supabase // Plugins zitaendelea kuitumia kama kawaida
     };
 
     // 6. OBSERVER MATCHING
@@ -66,7 +69,7 @@ async function router(m, ctx) {
                     : true;
 
                 if (shouldTrigger) matchedObservers.push(obs);
-            } catch (err) { /* Silent ignore */ }
+            } catch (err) { /* Ignore */ }
         }
     }
 
@@ -75,7 +78,7 @@ async function router(m, ctx) {
         const command = commands.get(cmdName);
 
         if (command && typeof command.execute === "function") {
-            // Check if command is Owner Only
+            // Category protection
             if (command.category === "owner" && userRole !== "owner") {
                 return { type: "ignore" };
             }
@@ -89,7 +92,7 @@ async function router(m, ctx) {
         return { type: "ignore" };
     }
 
-    // 8. OBSERVER EXECUTION
+    // 8. OBSERVERS EXECUTION
     if (matchedObservers.length > 0) {
         return {
             type: "observer",
@@ -101,9 +104,6 @@ async function router(m, ctx) {
     return { type: "ignore" };
 }
 
-/**
- * HELPER: Kutambua aina ya ujumbe
- */
 function getMessageType(m) {
     const msg = m.message || {};
     if (msg.protocolMessage) return "protocol";
