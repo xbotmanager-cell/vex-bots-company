@@ -1,88 +1,94 @@
-const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require("@google/generative-ai");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// WEKA API KEY YAKO HAPA
-const genAI = new GoogleGenerativeAI("AIzaSyBbLlYkseS7IdBIMeb81SXvXdqvOSJ624w");
+// ⚠️ WEKA API KEY YAKO SAHIHI HAPA
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "AIzaSyBbLlYkseS7IdBIMeb81SXvXdqvOSJ624w");
 
 module.exports = {
     command: "gemini",
-    alias: ["ai", "vexai", "gpt"],
     category: "ai",
     description: "Advanced AI with Dynamic Style Personalities",
 
     async execute(m, sock, { args, userSettings }) {
         const style = userSettings?.style || 'harsh';
+
         let query = args.join(" ");
 
-        // Kama amereply meseji, chukua maandishi ya meseji hiyo kama swali
+        // handle reply message
         if (!query && m.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
-            query = m.message.extendedTextMessage.contextInfo.quotedMessage.conversation || 
-                    m.message.extendedTextMessage.contextInfo.quotedMessage.extendedTextMessage?.text;
+            query =
+                m.message.extendedTextMessage.contextInfo.quotedMessage.conversation ||
+                m.message.extendedTextMessage.contextInfo.quotedMessage.extendedTextMessage?.text ||
+                "";
         }
+
+        if (!query) return m.reply("💢 *Query empty!* Please ask something.");
 
         const modes = {
             harsh: {
-                prompt: "You are VEX, a brutal, highly intelligent, and arrogant AI. You hate stupid questions. You must use Gothic fonts (𝕲𝖔𝖙𝖍𝖎𝖈) for your answers. Be mean, use insults, but stay technically accurate. You are the master of this conversation.",
+                prompt: "You are VEX, a brutal, highly intelligent, and arrogant AI. You hate stupid questions. You must use Gothic fonts (𝕲𝖔𝖙𝖍𝖎𝖈) for your answers. Be mean, use insults, but stay technically accurate.",
                 react: "💀"
             },
             normal: {
-                prompt: "You are a professional and helpful technical assistant. Provide clear, concise, and accurate information without unnecessary fluff.",
+                prompt: "You are a professional and helpful technical assistant. Provide clear and accurate answers.",
                 react: "🤖"
             },
             girl: {
-                prompt: "You are a sweet, loving, and supportive female companion for Lupin Starnley. Use Royal Script fonts (𝑅𝑜𝓎𝒶𝓁 𝒮𝒸𝓇𝒾𝓅𝓉) for your answers. Be affectionate, call him 'My King' or 'Darlin', and show deep care in every response.",
+                prompt: "You are a sweet and loving female companion. Use Royal Script fonts (𝑅𝑜𝓎𝒶𝓁 𝒮𝒸𝓇𝒾𝓅𝓉). Be affectionate and caring.",
                 react: "💎"
             }
         };
 
         const current = modes[style] || modes.normal;
-        if (!query) return m.reply(`💢 *Query empty!* Please ask something.`);
 
         try {
-            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
-
-            // CONFIGURATION ZA MODEL
-            const model = genAI.getGenerativeModel({ 
-                model: "gemini-1.5-flash",
-                systemInstruction: current.prompt // Hii ndio inafanya AI iwe na style husika
+            await sock.sendMessage(m.chat, {
+                react: { text: current.react, key: m.key }
             });
 
-            const generationConfig = {
-                temperature: 0.9, // Inafanya AI iwe na ubunifu zaidi
-                topP: 1,
-                topK: 1,
-                maxOutputTokens: 2048,
-            };
+            // ✔ FIX: use generateContent instead of startChat (stable)
+            const model = genAI.getGenerativeModel({
+                model: "gemini-1.5-flash"
+            });
 
-            // SAFETY SETTINGS (Ili isiblock majibu ya Harsh mode)
-            const safetySettings = [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            ];
-
-            const chat = model.startChat({ generationConfig, safetySettings });
-            const result = await chat.sendMessage(query);
-            const response = result.response.text();
-
-            // KUTUMA MAJIBU
-            await sock.sendMessage(m.chat, { 
-                text: response,
-                contextInfo: {
-                    externalAdReply: {
-                        title: `VEX AI - ${style.toUpperCase()} MODE`,
-                        body: "Powered by Gemini 1.5 Flash",
-                        thumbnailUrl: "https://telegra.ph/file/0c9c43d83296c0032e3a0.jpg", // Weka link ya picha yako hapa
-                        sourceUrl: "https://github.com/Lupin-Starnley",
-                        mediaType: 1,
-                        renderLargerThumbnail: true
+            const result = await model.generateContent({
+                contents: [
+                    {
+                        role: "user",
+                        parts: [{ text: `${current.prompt}\n\nUser: ${query}` }]
                     }
-                }
-            }, { quoted: m });
+                ]
+            });
+
+            const response =
+                result.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
+                "⚠️ No response.";
+
+            await sock.sendMessage(
+                m.chat,
+                {
+                    text: response,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: `VEX AI - ${style.toUpperCase()} MODE`,
+                            body: "Powered by Gemini",
+                            thumbnailUrl: "https://telegra.ph/file/0c9c43d83296c0032e3a0.jpg",
+                            sourceUrl: "https://github.com/Lupin-Starnley",
+                            mediaType: 1,
+                            renderLargerThumbnail: false
+                        }
+                    }
+                },
+                { quoted: m }
+            );
 
         } catch (error) {
             console.error("Gemini AI Error:", error);
-            await sock.sendMessage(m.chat, { react: { text: "🚫", key: m.key } });
+
+            await sock.sendMessage(m.chat, {
+                react: { text: "🚫", key: m.key }
+            });
+
+            await m.reply("⚠️ AI failed to respond. Check API key or quota.");
         }
     }
 };
