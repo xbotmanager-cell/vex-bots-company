@@ -8,7 +8,7 @@ module.exports = {
     description: "Advanced categorized interface with numerical mapping",
 
     async execute(m, sock, ctx) {
-        const { args, userSettings, cache } = ctx;
+        const { args, userSettings } = ctx;
 
         const lang =
             args[0] && args[0].length === 2
@@ -29,7 +29,6 @@ module.exports = {
 
                 try {
                     const pluginPath = path.join(pluginDir, file);
-
                     delete require.cache[require.resolve(pluginPath)];
                     const plugin = require(pluginPath);
 
@@ -46,40 +45,39 @@ module.exports = {
 
         const sorted = Array.from(categories).sort();
 
-        // ================= CACHE MAP =================
-        cache.set(`menu_map_${m.chat}`, sorted);
-
-        // ================= BUILD LIST =================
         let list = "";
         sorted.forEach((cat, i) => {
             const num = (i + 1).toString().padStart(2, "0");
             list += `│ ${num} ➤ ${cat.toUpperCase()}\n`;
         });
 
-        // ================= DESIGNS =================
+        // 🔥 NEW ENHANCED STYLES
         const designs = {
             harsh: {
-                head: `╭━━━〔 *VEX CORE* 〕━━━╮
+                head: `╭━━━〔 ☣️ VEX CORE ☣️ 〕━━━╮
 ┃ 👤 @${m.sender.split("@")[0]}
-┃ ⚡ Mode: HARSH
-╰━━━━━━━━━━━━━━━━╯`,
-                foot: "╰─➤ Reply with number.",
+┃ ⚡ MODE: HARSH EXECUTION
+┃ 🩸 SYSTEM: NO MERCY
+╰━━━━━━━━━━━━━━━━━━╯`,
+                foot: "╰─➤ Reply with number or get ignored.",
                 react: "☣️"
             },
             normal: {
-                head: `╭━━━〔 *VEX PANEL* 〕━━━╮
+                head: `╭━━━〔 📋 VEX PANEL 📋 〕━━━╮
 ┃ 👤 @${m.sender.split("@")[0]}
-┃ 📡 Stable System
-╰━━━━━━━━━━━━━━━━╯`,
-                foot: "╰─➤ Choose category.",
+┃ 📡 System Stable
+┃ 🔍 Choose Category
+╰━━━━━━━━━━━━━━━━━━╯`,
+                foot: "╰─➤ Reply with a number.",
                 react: "📋"
             },
             girl: {
-                head: `🌸 ╭━〔 *VEX MENU* 〕━╮ 🌸
+                head: `🌸 ╭━〔 💖 VEX MENU 💖 〕━╮ 🌸
 💖 @${m.sender.split("@")[0]}
-✨ pick something nice
-╰━━━━━━━━━━━━━━━╯`,
-                foot: "🎀 reply with number 🎀",
+✨ pick something cute~
+🌷 everything looks pretty!
+╰━━━━━━━━━━━━━━━━━━╯`,
+                foot: "🎀 reply with number sweetie 🎀",
                 react: "✨"
             }
         };
@@ -106,6 +104,88 @@ module.exports = {
                 },
                 { quoted: m }
             );
+
+            // ================= 🔥 SELF LISTENER =================
+            let active = true;
+
+            const listener = async (msg) => {
+                try {
+                    if (!active) return;
+                    if (!msg.messages) return;
+
+                    const message = msg.messages[0];
+                    if (!message.message) return;
+
+                    const from = message.key.remoteJid;
+                    if (from !== m.chat) return;
+
+                    const sender = message.key.participant || from;
+                    if (sender !== m.sender) return;
+
+                    const body =
+                        message.message.conversation ||
+                        message.message.extendedTextMessage?.text ||
+                        "";
+
+                    if (!body) return;
+
+                    const input = body.trim();
+
+                    // 🔢 CHECK NUMBER
+                    const index = parseInt(input);
+
+                    if (isNaN(index)) return;
+
+                    const chosen = sorted[index - 1];
+                    if (!chosen) return;
+
+                    active = false;
+
+                    // 🔍 SHOW COMMANDS IN CATEGORY
+                    let commands = [];
+
+                    const files = fs.readdirSync(pluginDir);
+
+                    for (const file of files) {
+                        if (!file.endsWith(".js")) continue;
+
+                        try {
+                            const pluginPath = path.join(pluginDir, file);
+                            delete require.cache[require.resolve(pluginPath)];
+                            const plugin = require(pluginPath);
+
+                            if (plugin.category?.toLowerCase() === chosen) {
+                                commands.push(plugin.command);
+                            }
+                        } catch {}
+                    }
+
+                    let result = `📂 ${chosen.toUpperCase()}\n\n`;
+                    commands.forEach(cmd => {
+                        result += `➤ ${cmd}\n`;
+                    });
+
+                    const { text } = await translate(result, { to: lang });
+
+                    await sock.sendMessage(m.chat, { text });
+
+                    sock.ev.off("messages.upsert", listener);
+
+                } catch (err) {
+                    console.error("MENU LISTENER ERROR:", err);
+                }
+            };
+
+            sock.ev.on("messages.upsert", listener);
+
+            // ⏰ AUTO STOP
+            setTimeout(() => {
+                if (active) {
+                    active = false;
+                    sock.ev.off("messages.upsert", listener);
+                }
+            }, 60000);
+
         } catch {
             await sock.sendMessage(m.chat, {
                 text: "⚠️ Menu crashed"
