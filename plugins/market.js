@@ -44,22 +44,16 @@ async function runMarket(m, sock, ctx) {
     const userId = m.sender;
     const groupId = m.chat;
 
-    const action = args[0]; // buy / sell / list
+    const action = (args[0] || "list").toLowerCase();
 
     const ui = {
         harsh: {
-            buy: "☣️ 𝕭𝖚𝖞𝖎𝖓𝖌 𝕭𝖑𝖆𝖈𝖐 𝕸𝖆𝖗𝖐𝖊𝖙 ☣️",
-            sell: "☣️ 𝕾𝖊𝖑𝖑𝖎𝖓𝖌 ☣️",
             react: "🖤"
         },
         normal: {
-            buy: "🖤 Market Buy",
-            sell: "💰 Market Sell",
             react: "🛒"
         },
         girl: {
-            buy: "💖 buying for you~",
-            sell: "🥺 selling item~",
             react: "🎀"
         }
     }[style] || {};
@@ -78,17 +72,24 @@ async function runMarket(m, sock, ctx) {
 
     if (!user) return m.reply("❌ Register first");
 
-    // ================= LIST MARKET =================
-    if (!action || action === "list") {
+    // ================= LIST MARKET (GLOBAL + GROUP) =================
+    if (action === "list") {
+
         const { data: items } = await supabase
             .from("g_market")
             .select("*")
-            .eq("group_id", groupId);
+            .or(`group_id.eq.global,group_id.eq.${groupId}`);
 
-        let list = "🖤 *BLACK MARKET LIST*\n\n";
+        if (!items || items.length === 0) {
+            return m.reply("🖤 Market is empty");
+        }
 
-        for (const i of items || []) {
-            list += `📦 ${i.name} - 💰 ${i.price}\n`;
+        let list = "🖤 *BLACK MARKET*\n\n";
+
+        for (const i of items) {
+            list += `📦 ${i.item_name}\n`;
+            list += `💰 Price: ${i.price}\n`;
+            list += `📊 Stock: ${i.stock}\n\n`;
         }
 
         const { text } = await translate(list, { to: lang });
@@ -98,24 +99,33 @@ async function runMarket(m, sock, ctx) {
 
     // ================= BUY =================
     if (action === "buy") {
+
         const itemName = args.slice(1).join(" ");
+        if (!itemName) return m.reply("❌ Specify item name");
 
         const { data: item } = await supabase
             .from("g_market")
             .select("*")
-            .eq("group_id", groupId)
-            .eq("name", itemName)
+            .or(`group_id.eq.global,group_id.eq.${groupId}`)
+            .eq("item_name", itemName)
             .single();
 
         if (!item) return m.reply("❌ Item not found");
 
-        if (user.coins < item.price) {
+        // 💡 dynamic AI price (future economy hook)
+        const finalPrice = Math.floor(
+            item.price + (item.price * item.volatility)
+        );
+
+        if (user.coins < finalPrice) {
             return m.reply("❌ Not enough coins");
         }
 
         await supabase
             .from("g_users")
-            .update({ coins: user.coins - item.price })
+            .update({
+                coins: user.coins - finalPrice
+            })
             .eq("user_id", userId)
             .eq("group_id", groupId);
 
@@ -123,11 +133,11 @@ async function runMarket(m, sock, ctx) {
             user_id: userId,
             group_id: groupId,
             type: "market_buy",
-            amount: item.price,
+            amount: finalPrice,
             status: "success"
         });
 
-        let msg = `🖤 Bought ${item.name} for ${item.price}`;
+        let msg = `🖤 Bought ${item.item_name} for ${finalPrice}`;
 
         const { text } = await translate(msg, { to: lang });
 
@@ -136,13 +146,17 @@ async function runMarket(m, sock, ctx) {
 
     // ================= SELL =================
     if (action === "sell") {
-        const itemName = args.slice(1).join(" ");
 
-        const price = Math.floor(Math.random() * 500 + 100);
+        const itemName = args.slice(1).join(" ");
+        if (!itemName) return m.reply("❌ Specify item name");
+
+        const price = Math.floor(200 + Math.random() * 800);
 
         await supabase
             .from("g_users")
-            .update({ coins: user.coins + price })
+            .update({
+                coins: user.coins + price
+            })
             .eq("user_id", userId)
             .eq("group_id", groupId);
 
