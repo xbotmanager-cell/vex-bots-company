@@ -7,13 +7,15 @@ module.exports = {
     description: "Group raid system for economy warfare",
 
     async execute(m, sock, ctx) {
-        const { args, supabase, userSettings } = ctx;
+        const { supabase, userSettings } = ctx;
 
         const style = userSettings?.style || "harsh";
         const lang = userSettings?.lang || "en";
 
         const attackerGroup = m.chat;
-        const targetGroup = m.mentionedJid?.[0];
+
+        // 🔥 FIX: pata user uliotag
+        const targetUser = m.mentionedJid?.[0];
 
         const modes = {
             harsh: {
@@ -36,12 +38,25 @@ module.exports = {
         const ui = modes[style] || modes.normal;
 
         try {
-            if (!targetGroup) {
-                return m.reply("❌ Tag target group to raid");
+            if (!targetUser) {
+                return m.reply("❌ Tag user from target group");
             }
 
+            // 🔥 STEP: pata group ya huyo user kutoka DB
+            const { data: targetUserData } = await supabase
+                .from("g_users")
+                .select("group_id")
+                .eq("user_id", targetUser)
+                .single();
+
+            if (!targetUserData) {
+                return m.reply("❌ Target user not registered in any group");
+            }
+
+            const targetGroup = targetUserData.group_id;
+
             if (targetGroup === attackerGroup) {
-                return m.reply("❌ You cannot raid your own group");
+                return m.reply("❌ Cannot raid same group");
             }
 
             await sock.sendMessage(m.chat, {
@@ -62,7 +77,7 @@ module.exports = {
                 .single();
 
             if (!target) {
-                return m.reply("❌ Target group not found in system");
+                return m.reply("❌ Target group not found");
             }
 
             // ================= RAID LOGIC =================
@@ -71,24 +86,20 @@ module.exports = {
 
             const success = attackPower > defendPower;
 
-            const loot = Math.floor(target.coins * (Math.random() * 0.3 + 0.1)); // 10%–40%
+            const loot = Math.floor(target.coins * (Math.random() * 0.3 + 0.1));
 
             let resultText = "";
 
-            // ================= SUCCESS =================
             if (success) {
-
-                const newAttackerCoins = attacker.coins + loot;
-                const newTargetCoins = Math.max(0, target.coins - loot);
 
                 await supabase
                     .from("g_groups")
-                    .update({ coins: newAttackerCoins })
+                    .update({ coins: attacker.coins + loot })
                     .eq("group_id", attackerGroup);
 
                 await supabase
                     .from("g_groups")
-                    .update({ coins: newTargetCoins })
+                    .update({ coins: Math.max(0, target.coins - loot) })
                     .eq("group_id", targetGroup);
 
                 await supabase.from("g_raid_logs").insert({
@@ -99,10 +110,7 @@ module.exports = {
                 });
 
                 resultText = `${ui.win}\n\n💰 Loot captured: ${loot}`;
-            }
-
-            // ================= FAIL =================
-            else {
+            } else {
 
                 const penalty = Math.floor(attacker.coins * 0.1);
 
@@ -123,7 +131,6 @@ module.exports = {
                 resultText = `${ui.lose}\n\n💸 Loss: ${penalty}`;
             }
 
-            // ================= MESSAGE =================
             const msg = `
 *⚔️ RAID SYSTEM*
 
@@ -135,7 +142,10 @@ ${resultText}
 
             const { text } = await translate(msg, { to: lang });
 
-            await sock.sendMessage(m.chat, { text });
+            await sock.sendMessage(m.chat, {
+                text,
+                mentions: [targetUser] // 🔥 mention sasa inafanya kazi
+            });
 
         } catch (e) {
             console.error("RAID ERROR:", e);
