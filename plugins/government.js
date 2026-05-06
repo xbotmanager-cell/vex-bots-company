@@ -1,5 +1,6 @@
 const translate = require("google-translate-api-x");
 
+// ================= GOVERNMENT CORE =================
 module.exports = {
     command: "government",
     alias: ["gov", "state"],
@@ -39,117 +40,102 @@ module.exports = {
 
         const ui = modes[style] || modes.normal;
 
-        try {
-            await sock.sendMessage(m.chat, {
-                react: { text: ui.react, key: m.key }
-            });
+        await sock.sendMessage(m.chat, {
+            react: { text: ui.react, key: m.key }
+        });
 
-            // ================= VIEW STATUS =================
-            if (!action || action === "status") {
-                const { data: stats } = await supabase
-                    .from("g_government")
-                    .select("*")
-                    .eq("group_id", groupId)
-                    .single();
+        // ================= SAFE GET GOV =================
+        const { data: gov } = await supabase
+            .from("g_government")
+            .select("*")
+            .eq("group_id", groupId)
+            .single();
 
-                let msg = `
+        const taxRate = gov?.tax_rate ?? 5;
+
+        // ================= STATUS =================
+        if (!action || action === "status") {
+            let msg = `
 *${ui.head}*
 
 🏛 GOVERNMENT STATUS
 
-💰 Tax Rate: ${stats?.tax_rate || 5}%
-📊 Inflation: ${stats?.inflation || 1.0}x
-⚖️ Laws Active: ${stats?.laws || 0}
-🚨 Emergency: ${stats?.emergency ? "ON" : "OFF"}
-                `;
+💰 Tax Rate: ${taxRate}%
+📊 Inflation: ${gov?.inflation || 1.0}x
+⚖️ Laws Active: ${gov?.laws || 0}
+🚨 Emergency: ${gov?.emergency ? "ON" : "OFF"}
 
-                const { text } = await translate(msg, { to: lang });
+🧠 Active Policies:
+• Black Market Tax: ${taxRate}%
+• Rob Tax: ${Math.floor(taxRate / 2)}%
+• Casino Tax: ${taxRate + 2}%
+            `;
 
-                return m.reply(text);
+            const { text } = await translate(msg, { to: lang });
+            return m.reply(text);
+        }
+
+        // ================= TAX UPDATE =================
+        if (action === "tax") {
+            const rate = parseInt(args[1]);
+
+            if (isNaN(rate) || rate < 0 || rate > 50) {
+                return m.reply("❌ Invalid tax rate (0-50)");
             }
 
-            // ================= SET TAX =================
-            if (action === "tax") {
-                const rate = parseInt(args[1]);
+            await supabase.from("g_government").upsert({
+                group_id: groupId,
+                tax_rate: rate
+            });
 
-                if (isNaN(rate) || rate < 0 || rate > 50) {
-                    return m.reply("❌ Invalid tax rate (0-50)");
-                }
+            const msg = `${ui.tax}\n💰 New tax rate: ${rate}%`;
 
-                await supabase
-                    .from("g_government")
-                    .upsert({
-                        group_id: groupId,
-                        tax_rate: rate
-                    });
+            const { text } = await translate(msg, { to: lang });
+            return m.reply(text);
+        }
 
-                const msg = `${ui.tax}\n💰 New tax rate: ${rate}%`;
+        // ================= LAW SYSTEM =================
+        if (action === "law") {
+            const lawText = args.slice(1).join(" ");
+            if (!lawText) return m.reply("❌ Provide law text");
 
-                const { text } = await translate(msg, { to: lang });
+            const newLaws = (gov?.laws || 0) + 1;
 
-                return m.reply(text);
-            }
+            await supabase.from("g_government").upsert({
+                group_id: groupId,
+                laws: newLaws
+            });
 
-            // ================= SET LAW =================
-            if (action === "law") {
-                const lawText = args.slice(1).join(" ");
-
-                if (!lawText) return m.reply("❌ Provide law text");
-
-                const { data: gov } = await supabase
-                    .from("g_government")
-                    .select("*")
-                    .eq("group_id", groupId)
-                    .single();
-
-                const newLaws = (gov?.laws || 0) + 1;
-
-                await supabase
-                    .from("g_government")
-                    .upsert({
-                        group_id: groupId,
-                        laws: newLaws
-                    });
-
-                const msg = `
+            const msg = `
 ${ui.law}
 
 ⚖️ New Law Added:
 "${lawText}"
 
 📜 Total Laws: ${newLaws}
-                `;
+            `;
 
-                const { text } = await translate(msg, { to: lang });
+            const { text } = await translate(msg, { to: lang });
+            return m.reply(text);
+        }
 
-                return m.reply(text);
-            }
+        // ================= EMERGENCY =================
+        if (action === "emergency") {
+            await supabase.from("g_government").upsert({
+                group_id: groupId,
+                emergency: true
+            });
 
-            // ================= EMERGENCY =================
-            if (action === "emergency") {
-                await supabase
-                    .from("g_government")
-                    .upsert({
-                        group_id: groupId,
-                        emergency: true
-                    });
-
-                const msg = `
+            const msg = `
 🚨 EMERGENCY DECLARED!
 
 💥 Market freeze active
 💰 Tax doubled temporarily
 ⚠️ Economy instability detected
-                `;
+            `;
 
-                const { text } = await translate(msg, { to: lang });
-
-                return m.reply(text);
-            }
-
-        } catch (e) {
-            console.error("GOV ERROR:", e);
-            await m.reply("⚠️ Government system failed");
+            const { text } = await translate(msg, { to: lang });
+            return m.reply(text);
         }
     }
 };
