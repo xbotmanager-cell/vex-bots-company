@@ -1,0 +1,57 @@
+name: VEX Universal Sync
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  distribute-code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Master Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync to All Clients
+        env:
+          # Hapa weka Secrets zako zote unazotaka kuzi-monitor (1-10)
+          TOKEN_1: ${{ secrets.CLIENT_1_TOKEN }}
+          URL_1: ${{ secrets.CLIENT_1_URL }}
+          TOKEN_2: ${{ secrets.CLIENT_2_TOKEN }}
+          URL_2: ${{ secrets.CLIENT_2_URL }}
+          TOKEN_3: ${{ secrets.CLIENT_3_TOKEN }}
+          URL_3: ${{ secrets.CLIENT_3_URL }}
+          TOKEN_4: ${{ secrets.CLIENT_4_TOKEN }}
+          URL_4: ${{ secrets.CLIENT_4_URL }}
+          TOKEN_5: ${{ secrets.CLIENT_5_TOKEN }}
+          URL_5: ${{ secrets.CLIENT_5_URL }}
+          # Unaweza kuendelea mpaka 10...
+        run: |
+          # Loop ya kupita kwenye kila mteja (1 mpaka 10)
+          for i in {1..10}
+          do
+            # Kuchukua Token na URL kulingana na namba (i)
+            TOKEN_VAR="TOKEN_$i"
+            URL_VAR="URL_$i"
+            
+            TOKEN_VAL="${!TOKEN_VAR}"
+            URL_VAL="${!URL_VAR}"
+
+            # Akili ya Script: Kama Token au URL ni tupu, ruka huyu mteja
+            if [ -z "$TOKEN_VAL" ] || [ -z "$URL_VAL" ]; then
+              echo "⏩ Client $i: Data haijajazwa (Skipping...)"
+              continue
+            fi
+
+            echo "🚀 Client $i: Inaanza kupandisha code..."
+            
+            # Safisha URL ili kuingiza Token (Inatoa https:// na kuweka Token katikati)
+            CLEAN_URL=$(echo $URL_VAL | sed 's|https://||')
+            FINAL_URL="https://${TOKEN_VAL}@${CLEAN_URL}"
+
+            # Amri ya kusukuma code kwa nguvu (Force Push)
+            git push "$FINAL_URL" main --force || echo "❌ Client $i: Imefeli kupandisha code!"
+            
+            echo "✅ Client $i: Code imepanda kikamilifu!"
+          done
