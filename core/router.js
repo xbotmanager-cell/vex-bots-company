@@ -1,9 +1,9 @@
 /**
- * VEX ROUTER (ESM Version)
- * All logic remains the same, syntax updated for Node 22 + Baileys v7
+ * VEX ROUTER (CommonJS Version)
+ * Inasimamia uelekezaji wa amri na observers kwenda kwenye plugins husika.
  */
 
-export default async function router(m, ctx) {
+async function router(m, ctx) {
     const {
         body,
         commands,
@@ -15,7 +15,6 @@ export default async function router(m, ctx) {
     } = ctx;
 
     // ================= BASIC =================
-
     const isText = typeof body === "string" && body.length > 0;
 
     // ⚡ FAST PREFIX CHECK
@@ -34,7 +33,7 @@ export default async function router(m, ctx) {
         }
     }
 
-    // ⚡ ALIAS RESOLVE (FAST MAP)
+    // ⚡ ALIAS RESOLVE (Inatafuta kama amri ina jina mbadala)
     const cmdName = aliases.get(cmdNameRaw) || cmdNameRaw;
 
     const messageType = getMessageType(m);
@@ -43,9 +42,11 @@ export default async function router(m, ctx) {
     let userSettings = {};
     try {
         userSettings = cache.getUser?.(m.sender) || {};
-    } catch {}
+    } catch (e) {
+        userSettings = {};
+    }
 
-    // ⚡ CONTEXT (NO HEAVY OBJECTS)
+    // ⚡ CONTEXT (Data zinazotumwa kwenda kwenye plugin)
     const context = {
         args,
         userSettings,
@@ -56,10 +57,9 @@ export default async function router(m, ctx) {
     };
 
     // ================= OBSERVER MATCHING =================
-
     let matchedObservers = null;
 
-    if (observers.length > 0) {
+    if (observers && observers.length > 0) {
         matchedObservers = [];
 
         for (let i = 0; i < observers.length; i++) {
@@ -76,14 +76,16 @@ export default async function router(m, ctx) {
                         matchedObservers.push(obs);
                     }
                 } else {
+                    // Kama haina trigger function, tunaichukulia kama inasikiliza kila kitu
                     matchedObservers.push(obs);
                 }
-            } catch {}
+            } catch (err) {
+                // Ignore observer errors
+            }
         }
     }
 
-    // ================= COMMAND =================
-
+    // ================= COMMAND EXECUTION LOGIC =================
     if (isCommand && cmdName) {
         const command = commands.get(cmdName);
 
@@ -95,12 +97,11 @@ export default async function router(m, ctx) {
             };
         }
 
-        // ❌ unknown command → silent ignore (no crash)
+        // ❌ Kama amri haipo, tunakausha tu (silent ignore)
         return { type: "ignore" };
     }
 
-    // ================= OBSERVERS =================
-
+    // ================= OBSERVERS EXECUTION LOGIC =================
     if (matchedObservers && matchedObservers.length > 0) {
         return {
             type: "observer",
@@ -113,8 +114,9 @@ export default async function router(m, ctx) {
     return { type: "ignore" };
 }
 
-// ================= HELPER =================
-
+/**
+ * HELPER: Kutambua aina ya ujumbe unaoingia
+ */
 function getMessageType(m) {
     const msg = m.message || {};
 
@@ -128,3 +130,6 @@ function getMessageType(m) {
 
     return "unknown";
 }
+
+// Hamisha router ili itumike na require() kwenye index.js
+module.exports = router;
