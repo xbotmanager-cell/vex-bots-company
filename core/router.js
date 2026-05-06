@@ -1,6 +1,7 @@
 /**
- * VEX ROUTER (CommonJS Version)
- * Inasimamia uelekezaji wa amri na observers kwenda kwenye plugins husika.
+ * VEX SMART ROUTER - MULTI-TENANT EDITION
+ * Logic: Lupin Starnley Jimmoh (VEX CEO)
+ * Hii router inalazimisha kila plugin kusoma Client ID bila kubadili code ya plugin husika.
  */
 
 async function router(m, ctx) {
@@ -14,10 +15,12 @@ async function router(m, ctx) {
         prefix
     } = ctx;
 
-    // ================= BASIC =================
-    const isText = typeof body === "string" && body.length > 0;
+    // 1. FETCH ENVIRONMENT IDENTITY (Hutagusa code, itasoma toka Render ENV)
+    const CLIENT_ID = process.env.CLIENT_ID || "GLOBAL";
+    const DEVELOPER_NUMBER = "255780470905"; // Weka namba yako hapa
 
-    // ⚡ FAST PREFIX CHECK
+    // 2. BASIC PRE-PROCESSING
+    const isText = typeof body === "string" && body.length > 0;
     const isCommand = isText && body.startsWith(prefix);
 
     let cmdNameRaw = "";
@@ -25,7 +28,6 @@ async function router(m, ctx) {
 
     if (isCommand) {
         const sliced = body.slice(prefix.length).trim();
-
         if (sliced.length > 0) {
             const parts = sliced.split(/\s+/);
             cmdNameRaw = parts.shift()?.toLowerCase() || "";
@@ -33,76 +35,62 @@ async function router(m, ctx) {
         }
     }
 
-    // ⚡ ALIAS RESOLVE (Inatafuta kama amri ina jina mbadala)
     const cmdName = aliases.get(cmdNameRaw) || cmdNameRaw;
-
     const messageType = getMessageType(m);
 
-    // ⚡ SAFE USER SETTINGS
-    let userSettings = {};
-    try {
-        userSettings = cache.getUser?.(m.sender) || {};
-    } catch (e) {
-        userSettings = {};
-    }
+    // 3. ROLE & PERMISSION CHECK
+    const sender = m.sender || "";
+    const userRole = sender.includes(DEVELOPER_NUMBER) ? "owner" : "user";
 
-    // ⚡ CONTEXT (Data zinazotumwa kwenda kwenye plugin)
+    // 4. SMART CONTEXT INJECTION (The Secret Sauce)
+    // Hapa ndipo tunapopitisha data kwa lazima kwenda kwenye plugins zote
     const context = {
-        args,
-        userSettings,
-        cache,
-        supabase,
-        commands,
-        prefix
+        ...ctx,      // Data za mwanzo
+        args,        // Arguments zilizosafishwa
+        clientId: CLIENT_ID, // ID ya mteja (kutoka Render ENV)
+        userRole: userRole,   // Role ya mtumiaji (Owner/User)
+        userSettings: cache.getUser?.(sender) || {},
+        
+        // 5. SUPABASE WRAPPER (Optional: Inalazimisha filter ya Client ID)
+        // Hii inahakikisha hata plugin iweje, itasoma data za huyu mteja tu
+        db: (tableName) => supabase.from(tableName).select('*').eq('client_id', CLIENT_ID)
     };
 
-    // ================= OBSERVER MATCHING =================
-    let matchedObservers = null;
-
+    // 6. OBSERVER MATCHING
+    let matchedObservers = [];
     if (observers && observers.length > 0) {
-        matchedObservers = [];
-
-        for (let i = 0; i < observers.length; i++) {
-            const obs = observers[i];
-
+        for (const obs of observers) {
             try {
-                if (typeof obs.trigger === "function") {
-                    if (obs.trigger(m, {
-                        body,
-                        messageType,
-                        userSettings,
-                        cache
-                    })) {
-                        matchedObservers.push(obs);
-                    }
-                } else {
-                    // Kama haina trigger function, tunaichukulia kama inasikiliza kila kitu
-                    matchedObservers.push(obs);
-                }
-            } catch (err) {
-                // Ignore observer errors
-            }
+                const shouldTrigger = typeof obs.trigger === "function" 
+                    ? obs.trigger(m, { body, messageType, cache, clientId: CLIENT_ID }) 
+                    : true;
+
+                if (shouldTrigger) matchedObservers.push(obs);
+            } catch (err) { /* Silent ignore */ }
         }
     }
 
-    // ================= COMMAND EXECUTION LOGIC =================
+    // 7. COMMAND EXECUTION
     if (isCommand && cmdName) {
         const command = commands.get(cmdName);
 
         if (command && typeof command.execute === "function") {
+            // Check if command is Owner Only
+            if (command.category === "owner" && userRole !== "owner") {
+                return { type: "ignore" };
+            }
+
             return {
                 type: "command",
                 command,
                 context
             };
         }
-
-        // ❌ Kama amri haipo, tunakausha tu (silent ignore)
         return { type: "ignore" };
     }
 
-    // ================= OBSERVERS EXECUTION LOGIC =================
-    if (matchedObservers && matchedObservers.length > 0) {
+    // 8. OBSERVER EXECUTION
+    if (matchedObservers.length > 0) {
         return {
             type: "observer",
             list: matchedObservers,
@@ -110,26 +98,22 @@ async function router(m, ctx) {
         };
     }
 
-    // ================= DEFAULT =================
     return { type: "ignore" };
 }
 
 /**
- * HELPER: Kutambua aina ya ujumbe unaoingia
+ * HELPER: Kutambua aina ya ujumbe
  */
 function getMessageType(m) {
     const msg = m.message || {};
-
     if (msg.protocolMessage) return "protocol";
-    if (msg.viewOnceMessageV2 || msg.viewOnceMessageV2Extension) return "viewOnce";
+    if (msg.viewOnceMessageV2) return "viewOnce";
     if (msg.imageMessage) return "image";
     if (msg.videoMessage) return "video";
     if (msg.audioMessage) return "audio";
     if (msg.documentMessage) return "document";
     if (msg.extendedTextMessage || msg.conversation) return "text";
-
     return "unknown";
 }
 
-// Hamisha router ili itumike na require() kwenye index.js
 module.exports = router;
