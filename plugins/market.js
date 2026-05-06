@@ -1,146 +1,168 @@
 const translate = require("google-translate-api-x");
 
+// 🔥 QUEUE (ANTI BAN)
+const queue = [];
+let processing = false;
+
 module.exports = {
     command: "market",
-    alias: ["trade", "stock"],
+    alias: ["bm", "blackmarket"],
     category: "economy",
-    description: "AI powered trader market system",
+    description: "Black Market trading system",
 
     async execute(m, sock, ctx) {
-        const { args, supabase, userSettings } = ctx;
-
-        const style = userSettings?.style || "harsh";
-        const lang = userSettings?.lang || "en";
-
-        const userId = m.sender;
-        const groupId = m.chat;
-
-        const action = args[0]?.toLowerCase(); // buy / sell / view
-        const item = args[1]?.toUpperCase();
-        const amount = parseInt(args[2]);
-
-        const items = {
-            GOLD: { price: 100 },
-            CRYPTO: { price: 200 },
-            OIL: { price: 80 },
-            DIAMOND: { price: 500 },
-            BITCOIN: { price: 1000 }
-        };
-
-        const modes = {
-            harsh: {
-                head: "☣️ 𝕬𝕴 𝕸𝖆𝖗𝖐𝖊𝖙 𝕮𝖔𝖗𝖊 ☣️",
-                buy: "☣️ 𝕭𝖚𝖞 𝕾𝖚𝖈𝖈𝖊𝖘𝖘 ☣️",
-                sell: "☣️ 𝕾𝖊𝖑𝖑 𝕮𝖔𝖒𝖕𝖑𝖊𝖙𝖊 ☣️",
-                react: "📊"
-            },
-            normal: {
-                head: "📊 AI Market",
-                buy: "✅ Bought successfully",
-                sell: "✅ Sold successfully",
-                react: "💹"
-            },
-            girl: {
-                head: "💖 Cute Market 💖",
-                buy: "💖 you bought it~",
-                sell: "💖 you sold it~",
-                react: "🎀"
-            }
-        };
-
-        const ui = modes[style] || modes.normal;
-
-        try {
-            await sock.sendMessage(m.chat, {
-                react: { text: ui.react, key: m.key }
-            });
-
-            // ================= VIEW MARKET =================
-            if (!action || action === "view") {
-                let msg = `*${ui.head}*\n\n📊 LIVE PRICES:\n\n`;
-
-                for (let key in items) {
-                    // AI FLUCTUATION ENGINE
-                    let fluctuation = Math.floor(Math.random() * 20 - 10);
-                    items[key].price += fluctuation;
-
-                    if (items[key].price < 10) items[key].price = 10;
-
-                    msg += `💰 ${key}: ${items[key].price}\n`;
-                }
-
-                return m.reply(msg);
-            }
-
-            // ================= BUY =================
-            if (action === "buy") {
-                if (!items[item]) return m.reply("❌ Invalid item");
-
-                const cost = items[item].price * amount;
-
-                const { data: user } = await supabase
-                    .from("g_users")
-                    .select("*")
-                    .eq("user_id", userId)
-                    .single();
-
-                if (!user || user.coins < cost) {
-                    return m.reply("❌ Not enough coins");
-                }
-
-                await supabase
-                    .from("g_users")
-                    .update({
-                        coins: user.coins - cost
-                    })
-                    .eq("user_id", userId);
-
-                await supabase.from("g_transactions").insert({
-                    user_id: userId,
-                    group_id: groupId,
-                    type: "market_buy",
-                    item,
-                    amount,
-                    cost
-                });
-
-                return m.reply(`📈 Bought ${amount} ${item} for ${cost}`);
-            }
-
-            // ================= SELL =================
-            if (action === "sell") {
-                if (!items[item]) return m.reply("❌ Invalid item");
-
-                const gain = items[item].price * amount;
-
-                const { data: user } = await supabase
-                    .from("g_users")
-                    .select("*")
-                    .eq("user_id", userId)
-                    .single();
-
-                await supabase
-                    .from("g_users")
-                    .update({
-                        coins: user.coins + gain
-                    })
-                    .eq("user_id", userId);
-
-                await supabase.from("g_transactions").insert({
-                    user_id: userId,
-                    group_id: groupId,
-                    type: "market_sell",
-                    item,
-                    amount,
-                    gain
-                });
-
-                return m.reply(`📉 Sold ${amount} ${item} for ${gain}`);
-            }
-
-        } catch (e) {
-            console.error("MARKET ERROR:", e);
-            await m.reply("⚠️ Market system failed");
-        }
+        queue.push({ m, sock, ctx });
+        processQueue();
     }
 };
+
+// ================= QUEUE ENGINE =================
+async function processQueue() {
+    if (processing) return;
+    processing = true;
+
+    while (queue.length > 0) {
+        const job = queue.shift();
+        try {
+            await runMarket(job.m, job.sock, job.ctx);
+            await sleep(1200);
+        } catch (e) {
+            console.error("MARKET ERROR:", e);
+        }
+    }
+
+    processing = false;
+}
+
+// ================= MAIN =================
+async function runMarket(m, sock, ctx) {
+    const { supabase, userSettings, args } = ctx;
+
+    const style = userSettings?.style || "harsh";
+    const lang = userSettings?.lang || "en";
+
+    const userId = m.sender;
+    const groupId = m.chat;
+
+    const action = args[0]; // buy / sell / list
+
+    const ui = {
+        harsh: {
+            buy: "☣️ 𝕭𝖚𝖞𝖎𝖓𝖌 𝕭𝖑𝖆𝖈𝖐 𝕸𝖆𝖗𝖐𝖊𝖙 ☣️",
+            sell: "☣️ 𝕾𝖊𝖑𝖑𝖎𝖓𝖌 ☣️",
+            react: "🖤"
+        },
+        normal: {
+            buy: "🖤 Market Buy",
+            sell: "💰 Market Sell",
+            react: "🛒"
+        },
+        girl: {
+            buy: "💖 buying for you~",
+            sell: "🥺 selling item~",
+            react: "🎀"
+        }
+    }[style] || {};
+
+    await sock.sendMessage(m.chat, {
+        react: { text: ui.react, key: m.key }
+    });
+
+    // ================= GET USER =================
+    const { data: user } = await supabase
+        .from("g_users")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("group_id", groupId)
+        .single();
+
+    if (!user) return m.reply("❌ Register first");
+
+    // ================= LIST MARKET =================
+    if (!action || action === "list") {
+        const { data: items } = await supabase
+            .from("g_market")
+            .select("*")
+            .eq("group_id", groupId);
+
+        let list = "🖤 *BLACK MARKET LIST*\n\n";
+
+        for (const i of items || []) {
+            list += `📦 ${i.name} - 💰 ${i.price}\n`;
+        }
+
+        const { text } = await translate(list, { to: lang });
+
+        return sock.sendMessage(m.chat, { text });
+    }
+
+    // ================= BUY =================
+    if (action === "buy") {
+        const itemName = args.slice(1).join(" ");
+
+        const { data: item } = await supabase
+            .from("g_market")
+            .select("*")
+            .eq("group_id", groupId)
+            .eq("name", itemName)
+            .single();
+
+        if (!item) return m.reply("❌ Item not found");
+
+        if (user.coins < item.price) {
+            return m.reply("❌ Not enough coins");
+        }
+
+        await supabase
+            .from("g_users")
+            .update({ coins: user.coins - item.price })
+            .eq("user_id", userId)
+            .eq("group_id", groupId);
+
+        await supabase.from("g_transactions").insert({
+            user_id: userId,
+            group_id: groupId,
+            type: "market_buy",
+            amount: item.price,
+            status: "success"
+        });
+
+        let msg = `🖤 Bought ${item.name} for ${item.price}`;
+
+        const { text } = await translate(msg, { to: lang });
+
+        return sock.sendMessage(m.chat, { text });
+    }
+
+    // ================= SELL =================
+    if (action === "sell") {
+        const itemName = args.slice(1).join(" ");
+
+        const price = Math.floor(Math.random() * 500 + 100);
+
+        await supabase
+            .from("g_users")
+            .update({ coins: user.coins + price })
+            .eq("user_id", userId)
+            .eq("group_id", groupId);
+
+        await supabase.from("g_transactions").insert({
+            user_id: userId,
+            group_id: groupId,
+            type: "market_sell",
+            amount: price,
+            status: "success"
+        });
+
+        let msg = `💰 Sold ${itemName} for ${price}`;
+
+        const { text } = await translate(msg, { to: lang });
+
+        return sock.sendMessage(m.chat, { text });
+    }
+}
+
+// ================= UTIL =================
+function sleep(ms) {
+    return new Promise(r => setTimeout(r, ms));
+}
