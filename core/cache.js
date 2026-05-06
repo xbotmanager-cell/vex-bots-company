@@ -1,4 +1,4 @@
-import EventEmitter from "events";
+const EventEmitter = require("events");
 
 class VexCache extends EventEmitter {
     constructor() {
@@ -28,7 +28,7 @@ class VexCache extends EventEmitter {
                 });
             }
 
-            // LOAD USER SETTINGS (OPTIONAL - lazy load supported)
+            // LOAD USER SETTINGS (Lazy loading support)
             const { data: users } = await supabase.from("users").select("*");
 
             if (users) {
@@ -45,7 +45,7 @@ class VexCache extends EventEmitter {
             this.setupRealtime(supabase);
 
             this.ready = true;
-            console.log("⚡ CACHE READY");
+            console.log("⚡ VEX CACHE READY");
 
         } catch (e) {
             console.error("CACHE INIT ERROR:", e.message);
@@ -55,7 +55,7 @@ class VexCache extends EventEmitter {
     // ================= REALTIME =================
 
     setupRealtime(supabase) {
-        // GLOBAL SETTINGS
+        // GLOBAL SETTINGS REALTIME
         supabase
             .channel("vex_settings_changes")
             .on(
@@ -63,6 +63,7 @@ class VexCache extends EventEmitter {
                 { event: "*", schema: "public", table: "vex_settings" },
                 payload => {
                     const updated = payload.new;
+                    if (!updated) return;
 
                     const value = (updated.setting_name === "style")
                         ? updated.extra_data
@@ -78,7 +79,7 @@ class VexCache extends EventEmitter {
             )
             .subscribe();
 
-        // USER SETTINGS
+        // USER SETTINGS REALTIME
         supabase
             .channel("users_changes")
             .on(
@@ -86,6 +87,7 @@ class VexCache extends EventEmitter {
                 { event: "*", schema: "public", table: "users" },
                 payload => {
                     const u = payload.new;
+                    if (!u) return;
 
                     this.userSettings.set(u.id, {
                         style: u.style || "harsh",
@@ -111,6 +113,7 @@ class VexCache extends EventEmitter {
     }
 
     getUser(jid) {
+        // Inapata settings za user, kama hayupo inarudisha default
         return this.userSettings.get(jid) || {
             style: this.getSetting("style") || "harsh",
             lang: "en",
@@ -175,5 +178,5 @@ class VexCache extends EventEmitter {
     }
 }
 
-// Badala ya module.exports, sasa tunatumia export default
-export default new VexCache();
+// Hapa tunatumia module.exports ili index.js iweze ku-require
+module.exports = new VexCache();
