@@ -7,24 +7,21 @@ module.exports = {
     description: "Mchezo wa kubashiri neno herufi kwa herufi",
 
     async execute(m, sock, { userSettings, lang, prefix }) {
-        // 1. CONFIG & STYLE SYNC
+
         const style = userSettings?.style || 'harsh';
         const targetLang = lang || 'en';
 
-        // 2. WORD POOL (English Words)
         const words = ["JAVASCRIPT", "DATABASE", "WHATSAPP", "LUPER", "NODEJS", "HACKING", "SERVER", "CODING"];
         const selectedWord = words[Math.floor(Math.random() * words.length)];
-        
-        // Tunatengeneza muonekano wa neno lililofichwa (mfano: _ _ _ _ _)
+
         const hiddenWord = selectedWord.split('').map(() => "_").join(" ");
 
-        // 3. STYLES DEFINITION
         const modes = {
             harsh: {
-                title: "☣️ 𝕳𝕬𝕹𝕕𝕸𝕬𝕹 𝕰𝖃𝕰𝕮𝕿𝕴𝕺𝕹 ☣️",
+                title: "☣️ 𝕳𝕬𝕹𝕲𝕸𝕬𝕹 𝕰𝖃𝕰𝕮𝕿𝕴𝕺𝕹 ☣️",
                 line: "━",
-                quest: "🩸 𝕲𝖚𝖊𝖘𝖘 𝖙𝖍𝖊 𝖜𝖔𝖗𝖉 𝖔𝖗 𝖌𝖊𝖙 𝖍𝖆𝖓𝖌𝖊𝖉:",
-                hint: "⚙️ 𝕽𝖊𝖕𝖑𝖞 𝖜𝖎𝖙𝖍 𝖙𝖍𝖊 𝖋𝖚𝖑𝖑 𝖜𝖔𝖗𝖉 𝖙𝖔 𝖜𝖎𝖓.",
+                quest: "🩸 Guess the word or get hanged:",
+                hint: "⚙️ Reply with the full word to win.",
                 react: "💀"
             },
             normal: {
@@ -35,10 +32,10 @@ module.exports = {
                 react: "🎮"
             },
             girl: {
-                title: "🫧 𝐻𝒶𝓃𝑔𝓂𝒶𝓃 𝒫𝒾𝓃𝓀 𝒫𝓊𝓏𝓏𝓁𝑒 🫧",
+                title: "🫧 Hangman Pink Puzzle 🫧",
                 line: "┄",
-                quest: "🫧 𝒸𝒶𝓃 𝓎𝑜𝓊 𝒻𝒾𝓃𝒹 𝓉𝒽𝑒 𝒽𝒾𝒹𝒹𝑒𝓃 𝓌𝑜𝓇𝒹? 🫧",
-                hint: "🫧 𝓉𝓎𝓅𝑒 𝒾𝓉 𝒽𝑒𝓇𝑒, 𝒹𝒶𝓇𝓁𝒾𝓃𝑔~ 🫧",
+                quest: "🫧 can you find the hidden word? 🫧",
+                hint: "🫧 type it here, darling~ 🫧",
                 react: "🎀"
             }
         };
@@ -48,29 +45,65 @@ module.exports = {
         try {
             await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
 
-            // 4. PREPARE DASHBOARD
             const gameUI = `*${current.title}*\n${current.line.repeat(15)}\n\n*${current.quest}*\n\n\`\`\`${hiddenWord}\`\`\`\n\n${current.line.repeat(15)}\n_${current.hint}_`;
 
-            // 5. TRANSLATE & SEND
             const { text: translatedUI } = await translate(gameUI, { to: targetLang });
             const sent = await m.reply(translatedUI);
 
-            // 6. SAVE GAME TO CACHE (Hii itasubiri jibu sahihi kule kwenye Observer)
-            global.activeGames = global.activeGames || {};
-            global.activeGames[m.chat] = {
-                type: "hangman",
-                word: selectedWord,
-                messageId: sent.key.id,
-                style: style
+            let gameActive = true;
+
+            // 🔥 LISTENER NDANI YA COMMAND (SELF-CONTAINED)
+            const listener = async (msg) => {
+                try {
+                    if (!gameActive) return;
+
+                    if (!msg.messages) return;
+                    const message = msg.messages[0];
+                    if (!message.message) return;
+
+                    const from = message.key.remoteJid;
+                    if (from !== m.chat) return;
+
+                    const body =
+                        message.message.conversation ||
+                        message.message.extendedTextMessage?.text ||
+                        "";
+
+                    if (!body) return;
+
+                    const answer = body.trim().toUpperCase();
+
+                    // ✔️ CORRECT ANSWER
+                    if (answer === selectedWord) {
+                        gameActive = false;
+
+                        const winMsg = `🎉 CORRECT!\n\nYou guessed: *${selectedWord}*`;
+                        const { text } = await translate(winMsg, { to: targetLang });
+
+                        await sock.sendMessage(m.chat, { text });
+
+                        sock.ev.off('messages.upsert', listener);
+                    }
+
+                } catch (err) {
+                    console.error("LISTENER ERROR:", err);
+                }
             };
 
-            // 7. AUTO-REVEAL AFTER 30s (Ili game isikae milele)
+            // attach listener
+            sock.ev.on('messages.upsert', listener);
+
+            // ⏰ TIMEOUT
             setTimeout(async () => {
-                if (global.activeGames[m.chat] && global.activeGames[m.chat].type === "hangman") {
-                    const revealMsg = `*⏰ TIME UP!*\n\nThe correct word was: *${selectedWord}*`;
-                    const { text: translatedReveal } = await translate(revealMsg, { to: targetLang });
-                    await sock.sendMessage(m.chat, { text: translatedReveal });
-                    delete global.activeGames[m.chat];
+                if (gameActive) {
+                    gameActive = false;
+
+                    const revealMsg = `⏰ TIME UP!\n\nCorrect word: *${selectedWord}*`;
+                    const { text } = await translate(revealMsg, { to: targetLang });
+
+                    await sock.sendMessage(m.chat, { text });
+
+                    sock.ev.off('messages.upsert', listener);
                 }
             }, 30000);
 
