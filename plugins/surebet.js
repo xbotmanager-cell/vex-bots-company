@@ -1,4 +1,3 @@
-// ================= LUPER-MD BETTING INTELLIGENCE =================
 const axios = require("axios");
 const translate = require("google-translate-api-x");
 
@@ -6,19 +5,27 @@ module.exports = {
     command: "surebet",
     alias: ["bet", "odds"],
     category: "games",
-    description: "Advanced surebet & value betting intelligence",
+    description: "Advanced surebet & betting intelligence",
 
-    async execute(m, sock, { args, userSettings, prefix }) {
+    async execute(m, sock, { userSettings }) {
 
-        // ================= API KEYS =================
-        const ODDS_API_KEY = "b771e884a70de4db3c108e6cbbb9e233";
+        // ================= API =================
+        const ODDS_API_KEY =
+            "b771e884a70de4db3c108e6cbbb9e233";
 
         // ================= SETTINGS =================
-        const style = userSettings?.style || "harsh";
-        const lang = userSettings?.lang || "en";
+        const style =
+            userSettings?.style || "harsh";
+
+        const lang =
+            userSettings?.lang || "en";
+
+        // DEFAULT STAKE
+        const STAKE = 1000;
 
         // ================= STYLES =================
         const modes = {
+
             harsh: {
                 title: "☣️ 𝕾𝖀𝕽𝕰𝕭𝕰𝕿 𝕴𝕹𝕿𝕰𝕷 ☣️",
                 line: "━",
@@ -26,6 +33,7 @@ module.exports = {
                 fail: "☠️ Market feed lost.",
                 react: "💀"
             },
+
             normal: {
                 title: "💰 SUREBET ANALYSIS 💰",
                 line: "─",
@@ -33,6 +41,7 @@ module.exports = {
                 fail: "⚠️ Could not fetch odds.",
                 react: "📊"
             },
+
             girl: {
                 title: "🫧 𝒮𝓊𝓇𝑒𝒷𝑒𝓉 𝐿𝑜𝓋𝑒𝓁𝓎 𝒜𝓃𝒶𝓁𝓎𝓈𝒾𝓈 🫧",
                 line: "┄",
@@ -42,112 +51,245 @@ module.exports = {
             }
         };
 
-        const current = modes[style] || modes.normal;
+        const current =
+            modes[style] || modes.normal;
 
         try {
-            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
+
+            // REACTION
+            await sock.sendMessage(
+                m.chat,
+                {
+                    react: {
+                        text: current.react,
+                        key: m.key
+                    }
+                }
+            );
 
             await m.reply(current.scan);
 
             // ================= FETCH ODDS =================
-            const url = `https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${ODDS_API_KEY}&regions=eu,uk&markets=h2h,totals`;
+            const url =
+`https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${ODDS_API_KEY}&regions=eu,uk&markets=h2h`;
 
-            const { data } = await axios.get(url);
+            const { data } =
+                await axios.get(url);
 
-            let report = `*${current.title}*\n${current.line.repeat(20)}\n\n`;
+            let report =
+`*${current.title}*
+${current.line.repeat(25)}
 
-            let found = 0;
+💵 *Default Stake:* 1000 TSH
+✅ = Recommended
+❌ = Avoid
 
-            for (const match of data.slice(0, 15)) {
+`;
 
-                const home = match.home_team;
-                const away = match.away_team;
+            let totalMatches = 0;
+
+            // ================= LOOP =================
+            for (const match of data.slice(0, 10)) {
+
+                const home =
+                    match.home_team;
+
+                const away =
+                    match.away_team;
 
                 let bestHome = 0;
                 let bestDraw = 0;
                 let bestAway = 0;
 
-                let over25 = 0;
-                let under25 = 0;
+                let homeBook = "";
+                let drawBook = "";
+                let awayBook = "";
 
-                // ================= EXTRACT BEST ODDS =================
-                match.bookmakers?.forEach(b => {
-                    b.markets?.forEach(market => {
+                // ================= BEST ODDS =================
+                match.bookmakers?.forEach(book => {
 
-                        // 1X2
+                    book.markets?.forEach(market => {
+
                         if (market.key === "h2h") {
-                            market.outcomes.forEach(o => {
-                                if (o.name === home) bestHome = Math.max(bestHome, o.price);
-                                if (o.name === away) bestAway = Math.max(bestAway, o.price);
-                                if (o.name === "Draw") bestDraw = Math.max(bestDraw, o.price);
-                            });
-                        }
 
-                        // OVER UNDER
-                        if (market.key === "totals") {
                             market.outcomes.forEach(o => {
-                                if (o.name === "Over" && o.point === 2.5) {
-                                    over25 = Math.max(over25, o.price);
+
+                                if (
+                                    o.name === home &&
+                                    o.price > bestHome
+                                ) {
+                                    bestHome = o.price;
+                                    homeBook = book.title;
                                 }
-                                if (o.name === "Under" && o.point === 2.5) {
-                                    under25 = Math.max(under25, o.price);
+
+                                if (
+                                    o.name === away &&
+                                    o.price > bestAway
+                                ) {
+                                    bestAway = o.price;
+                                    awayBook = book.title;
                                 }
+
+                                if (
+                                    o.name === "Draw" &&
+                                    o.price > bestDraw
+                                ) {
+                                    bestDraw = o.price;
+                                    drawBook = book.title;
+                                }
+
                             });
                         }
 
                     });
+
                 });
 
-                if (!bestHome || !bestAway || !bestDraw) continue;
+                if (
+                    !bestHome ||
+                    !bestDraw ||
+                    !bestAway
+                ) continue;
 
-                // ================= SUREBET CALC =================
-                const sum = (1 / bestHome) + (1 / bestDraw) + (1 / bestAway);
+                totalMatches++;
 
-                // ================= DISPLAY =================
-                if (sum < 1) {
-                    found++;
-                    report += `🔥 *SUREBET*\n`;
-                    report += `${home} vs ${away}\n`;
-                    report += `H:${bestHome} D:${bestDraw} A:${bestAway}\n`;
-                    report += `Edge: ${(1 - sum).toFixed(3)}\n`;
-                    report += `${current.line.repeat(10)}\n`;
+                // ================= CALCULATIONS =================
+                const homeReturn =
+                    (STAKE * bestHome).toFixed(0);
+
+                const drawReturn =
+                    (STAKE * bestDraw).toFixed(0);
+
+                const awayReturn =
+                    (STAKE * bestAway).toFixed(0);
+
+                const sum =
+                    (1 / bestHome) +
+                    (1 / bestDraw) +
+                    (1 / bestAway);
+
+                const surebet =
+                    sum < 1;
+
+                const edge =
+                    ((1 - sum) * 100)
+                    .toFixed(2);
+
+                // ================= PICK LOGIC =================
+                let bestPick = "";
+                let bestOdd = 0;
+
+                if (bestHome > bestDraw && bestHome > bestAway) {
+                    bestPick = `🏠 ${home}`;
+                    bestOdd = bestHome;
                 }
 
-                // ================= VALUE BET =================
-                else if (bestHome > 2.2 || bestAway > 2.2) {
-                    report += `⚡ *VALUE BET*\n`;
-                    report += `${home} vs ${away}\n`;
-                    report += `H:${bestHome} D:${bestDraw} A:${bestAway}\n`;
-                    report += `${current.line.repeat(10)}\n`;
+                if (bestDraw > bestHome && bestDraw > bestAway) {
+                    bestPick = `🤝 DRAW`;
+                    bestOdd = bestDraw;
                 }
 
-                // ================= OVER/UNDER =================
-                if (over25 && under25) {
-                    report += `🎯 O/U 2.5\n`;
-                    report += `Over: ${over25} | Under: ${under25}\n`;
-                    report += `${current.line.repeat(10)}\n`;
+                if (bestAway > bestHome && bestAway > bestDraw) {
+                    bestPick = `🛫 ${away}`;
+                    bestOdd = bestAway;
                 }
+
+                // ================= SAFE RATING =================
+                let status = "❌";
+
+                if (bestOdd >= 1.50 && bestOdd <= 2.50) {
+                    status = "✅";
+                }
+
+                if (surebet) {
+                    status = "🔥";
+                }
+
+                // ================= REPORT =================
+                report +=
+`${current.line.repeat(20)}
+
+⚽ *${home} vs ${away}*
+
+${status} *Recommended:* ${bestPick}
+
+📊 *ODDS*
+🏠 Home  → ${bestHome}
+🤝 Draw  → ${bestDraw}
+🛫 Away  → ${bestAway}
+
+💰 *1000 TSH RETURNS*
+🏠 ${home}  → ${homeReturn} TSH
+🤝 Draw     → ${drawReturn} TSH
+🛫 ${away}  → ${awayReturn} TSH
+
+🏪 *BOOKMAKERS*
+🏠 ${homeBook}
+🤝 ${drawBook}
+🛫 ${awayBook}
+`;
+
+                // ================= SUREBET =================
+                if (surebet) {
+
+                    report +=
+`
+🔥 *SUREBET DETECTED*
+📈 Edge Profit: ${edge}%
+`;
+                }
+
             }
 
-            if (found === 0) {
-                report += "❌ No surebets found. Market tight.\n";
-            }
+            // ================= FOOTER =================
+            report +=
+`
+${current.line.repeat(25)}
 
-            report += `\n${current.line.repeat(20)}\n_Lupin Betting Intelligence_`;
+📌 *Total Matches:* ${totalMatches}
 
-            // ================= TRANSLATE =================
+💡 Betting Guide:
+✅ = safer odds
+🔥 = surebet chance
+❌ = risky market
+
+_Lupin Betting Intelligence_
+`;
+
+            // ================= TRANSLATION =================
             let finalMsg = report;
 
             try {
-                const { text } = await translate(report, { to: lang });
-                finalMsg = text;
+
+                if (lang !== "en") {
+
+                    const translated =
+                        await translate(
+                            report,
+                            {
+                                to: lang
+                            }
+                        );
+
+                    finalMsg =
+                        translated.text;
+                }
+
             } catch {}
 
+            // ================= SEND =================
             await m.reply(finalMsg);
 
         } catch (err) {
-            console.error("SUREBET ERROR:", err);
-            await m.reply(current.fail);
+
+            console.error(
+                "SUREBET ERROR:",
+                err
+            );
+
+            return m.reply(
+                current.fail
+            );
         }
     }
 };
