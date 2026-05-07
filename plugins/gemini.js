@@ -1,94 +1,67 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+/**
+ * VEX PLUGIN: AI CORE BACKUP (DIRECT MODE)
+ * Logic: Lupin Starnley Jimmoh (VEX CEO)
+ * Location: plugins/ai_backup.js
+ */
 
-// ⚠️ WEKA API KEY YAKO SAHIHI HAPA
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "AIzaSyBbLlYkseS7IdBIMeb81SXvXdqvOSJ624w");
+const vexBridge = require('../core/vex_bridge');
 
 module.exports = {
-    command: "gemini",
+    command: "ai",
+    alias: [],
     category: "ai",
-    description: "Advanced AI with Dynamic Style Personalities",
+    description: "Direct AI Response without delays",
 
-    async execute(m, sock, { args, userSettings }) {
-        const style = userSettings?.style || 'harsh';
+    async execute(m, sock, ctx) {
+        const { args, userSettings, body, prefix } = ctx;
+        const style = userSettings?.style?.value || 'normal';
+        
+        const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        let query = "";
 
-        let query = args.join(" ");
-
-        // handle reply message
-        if (!query && m.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
-            query =
-                m.message.extendedTextMessage.contextInfo.quotedMessage.conversation ||
-                m.message.extendedTextMessage.contextInfo.quotedMessage.extendedTextMessage?.text ||
-                "";
+        if (quoted) {
+            query = quoted.conversation || quoted.extendedTextMessage?.text || quoted.imageMessage?.caption || "";
+        } else {
+            query = args.join(" ");
         }
 
-        if (!query) return m.reply("💢 *Query empty!* Please ask something.");
+        if (!query && body.startsWith(prefix)) {
+            query = body.slice(prefix.length + 2).trim(); 
+        }
 
-        const modes = {
+        if (!query) return; // Silent return kama hamna swali
+
+        const styles = {
             harsh: {
-                prompt: "You are VEX, a brutal, highly intelligent, and arrogant AI. You hate stupid questions. You must use Gothic fonts (𝕲𝖔𝖙𝖍𝖎𝖈) for your answers. Be mean, use insults, but stay technically accurate.",
-                react: "💀"
+                title: "☘️ 𝖁𝕰𝖃 𝕳𝕬𝕽𝕾𝕳 ☘️",
+                react: "☘️"
             },
             normal: {
-                prompt: "You are a professional and helpful technical assistant. Provide clear and accurate answers.",
-                react: "🤖"
+                title: "💠 VEX AI 💠",
+                react: "💠"
             },
             girl: {
-                prompt: "You are a sweet and loving female companion. Use Royal Script fonts (𝑅𝑜𝓎𝒶𝓁 𝒮𝒸𝓇𝒾𝓅𝓉). Be affectionate and caring.",
-                react: "💎"
+                title: "🫧 𝒱𝑒𝓍𝒾𝑒 🫧",
+                react: "🫧"
             }
         };
 
-        const current = modes[style] || modes.normal;
+        const current = styles[style] || styles.normal;
 
         try {
-            await sock.sendMessage(m.chat, {
-                react: { text: current.react, key: m.key }
-            });
+            // Direct reaction pekee, mambo ya "Thinking..." yameondolewa
+            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
+            
+            const aiResponse = await vexBridge.askAI(query, ctx);
 
-            // ✔ FIX: use generateContent instead of startChat (stable)
-            const model = genAI.getGenerativeModel({
-                model: "gemini-1.5-flash"
-            });
+            // Jibu direct bila maelezo mengi
+            let finalMsg = `*${current.title}*\n\n`;
+            finalMsg += `${aiResponse}`;
 
-            const result = await model.generateContent({
-                contents: [
-                    {
-                        role: "user",
-                        parts: [{ text: `${current.prompt}\n\nUser: ${query}` }]
-                    }
-                ]
-            });
-
-            const response =
-                result.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
-                "⚠️ No response.";
-
-            await sock.sendMessage(
-                m.chat,
-                {
-                    text: response,
-                    contextInfo: {
-                        externalAdReply: {
-                            title: `VEX AI - ${style.toUpperCase()} MODE`,
-                            body: "Powered by Gemini",
-                            thumbnailUrl: "https://telegra.ph/file/0c9c43d83296c0032e3a0.jpg",
-                            sourceUrl: "https://github.com/Lupin-Starnley",
-                            mediaType: 1,
-                            renderLargerThumbnail: false
-                        }
-                    }
-                },
-                { quoted: m }
-            );
+            await sock.sendMessage(m.chat, { text: finalMsg }, { quoted: m });
 
         } catch (error) {
-            console.error("Gemini AI Error:", error);
-
-            await sock.sendMessage(m.chat, {
-                react: { text: "🚫", key: m.key }
-            });
-
-            await m.reply("⚠️ AI failed to respond. Check API key or quota.");
+            console.error("AI DIRECT ERROR:", error);
         }
     }
 };
