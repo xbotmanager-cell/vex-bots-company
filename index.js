@@ -16,6 +16,8 @@ const { Server } = require("socket.io");
 const QRCode = require("qrcode");
 const { createClient } = require("@supabase/supabase-js");
 
+// ================= SUPABASE CLIENT (CLEAN) =================
+// Tunatumia client safi hapa juu ili kurestore session bila kupita kwenye Proxy ya Router kwanza
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 // ================= GLOBAL =================
@@ -109,7 +111,7 @@ function loadObservers() {
     console.log(`👁️ Observers Loaded: ${observers.length}`);
 }
 
-// ================= SESSION CLOUD =================
+// ================= SESSION CLOUD (FORCED) =================
 async function syncSessionToCloud(creds) {
     try {
         const base64 = Buffer.from(JSON.stringify(creds)).toString("base64");
@@ -118,23 +120,36 @@ async function syncSessionToCloud(creds) {
             data: base64,
             client_id: global.clientId
         });
-    } catch (e) {}
+    } catch (e) {
+        console.error("❌ Cloud Sync Error:", e.message);
+    }
 }
 
 async function loadSessionFromCloud() {
     try {
-        const { data } = await supabase
+        console.log(`🔄 FORCING SESSION RESTORE FOR: ${global.clientId}...`);
+        const { data, error } = await supabase
             .from("vex_session")
             .select("data")
             .eq("id", `session_${global.clientId}`)
             .single();
-        if (data) {
+            
+        if (error) throw error;
+
+        if (data && data.data) {
             const decoded = Buffer.from(data.data, "base64").toString("utf-8");
-            if (!fs.existsSync("./session")) fs.mkdirSync("./session");
+            if (!fs.existsSync("./session")) fs.mkdirSync("./session", { recursive: true });
             fs.writeFileSync("./session/creds.json", decoded);
-            console.log(`☁️ Session Restored from Supabase for ${global.clientId}`);
+            console.log(`☁️ SUCCESS: Session GLOBAL Restored for ${global.clientId}`);
+            return true;
+        } else {
+            console.log("⚠️ No session data found in Supabase.");
+            return false;
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error("❌ FORCE RESTORE FAILED:", e.message);
+        return false;
+    }
 }
 
 // ================= PREFIX SYNC =================
@@ -165,13 +180,16 @@ async function syncSettings() {
 
 // ================= MAIN START =================
 async function startVex() {
+    // Tunasubiri restore ikamilike 100% kabla ya kuanzisha Baileys
     await loadSessionFromCloud();
     await syncSettings();
     loadCommands();
     loadObservers();
     startAutoReload();
+    
     const { state, saveCreds } = await useMultiFileAuthState("session");
     const { version } = await fetchLatestBaileysVersion();
+    
     const sock = makeWASocket({
         version,
         logger: pino({ level: "silent" }),
@@ -191,6 +209,7 @@ async function startVex() {
         m.chat = m.key.remoteJid;
         m.sender = m.key.participant || m.chat;
         m.reply = (t) => sock.sendMessage(m.chat, { text: t }, { quoted: m });
+        
         for (const obs of observers) {
             try {
                 if (!obs.trigger || obs.trigger(m)) {
@@ -203,7 +222,9 @@ async function startVex() {
                 }
             } catch (e) {}
         }
+        
         if (!body.startsWith(global.prefix)) return;
+        
         try {
             const route = await router(m, {
                 body,
@@ -238,7 +259,6 @@ async function startVex() {
             io.emit("connected");
             await syncSessionToCloud(state.creds);
             
-            // Logic for success message to user
             const userJid = sock.user.id.replace(/:.+/, "") + "@s.whatsapp.net";
             const successMsg = `*VEX SYSTEM CONNECTED*\n\n` +
                                `💠 *Prefix:* ${global.prefix}\n` +
