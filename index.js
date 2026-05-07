@@ -16,59 +16,47 @@ const { Server } = require("socket.io");
 const QRCode = require("qrcode");
 const { createClient } = require("@supabase/supabase-js");
 
-// ================= SUPABASE CLIENT (CLEAN) =================
-// Tunatumia client safi hapa juu ili kurestore session bila kupita kwenye Proxy ya Router kwanza
+// ================= SUPABASE DIRECT =================
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// ================= GLOBAL =================
+// ================= GLOBAL CONFIG =================
 global.prefix = ".";
-global.clientId = process.env.CLIENT_ID || "VEX_DEFAULT";
+// Tunatumia ID moja tu ya kudumu kwa ajili ya session
+const SESSION_ID = "v1_session"; 
 
-// ================= CORE =================
+// ================= CORE COMPONENTS =================
 const router = require("./core/router");
 const cache = require("./core/cache");
 
-// ================= PATHS =================
 const pluginPath = path.join(__dirname, "plugins");
 const observerPath = path.join(__dirname, "observers");
 
-// ================= STORAGE =================
 const commands = new Map();
 const aliases = new Map();
 const observers = [];
 
-// ================= AUTO RELOAD ENGINE (ADDED ONLY) =================
+// ================= AUTO RELOAD =================
 let reloadLock = false;
-
 function startAutoReload() {
     if (reloadLock) return;
     reloadLock = true;
     try {
         fs.watch(pluginPath, { persistent: true }, (event, file) => {
-            if (file && file.endsWith(".js")) {
-                console.log(`♻️ Plugin changed: ${file}`);
-                loadCommands();
-            }
+            if (file && file.endsWith(".js")) { loadCommands(); }
         });
         fs.watch(observerPath, { persistent: true }, (event, file) => {
-            if (file && file.endsWith(".js")) {
-                console.log(`👁️ Observer changed: ${file}`);
-                loadObservers();
-            }
+            if (file && file.endsWith(".js")) { loadObservers(); }
         });
-        console.log("🔥 AUTO RELOAD ENABLED");
-    } catch (e) {
-        console.log("Auto reload error:", e.message);
-    }
+    } catch (e) {}
 }
 
-// ================= SERVER =================
+// ================= SERVER SETUP =================
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 const PORT = process.env.PORT || 10000;
 
-// ================= LOAD COMMANDS =================
+// ================= LOADERS =================
 function loadCommands() {
     commands.clear();
     aliases.clear();
@@ -82,18 +70,12 @@ function loadCommands() {
             const name = plugin.command || file.replace(".js", "");
             commands.set(name, plugin);
             if (Array.isArray(plugin.alias)) {
-                for (const a of plugin.alias) {
-                    aliases.set(a, name);
-                }
+                for (const a of plugin.alias) { aliases.set(a, name); }
             }
-        } catch (e) {
-            console.error(`Error loading command ${file}:`, e.message);
-        }
+        } catch (e) {}
     }
-    console.log(`✅ Commands Loaded: ${commands.size}`);
 }
 
-// ================= LOAD OBSERVERS =================
 function loadObservers() {
     observers.length = 0;
     if (!fs.existsSync(observerPath)) fs.mkdirSync(observerPath);
@@ -104,85 +86,50 @@ function loadObservers() {
             delete require.cache[require.resolve(filePath)];
             const obs = require(filePath);
             if (obs.onMessage) observers.push(obs);
-        } catch (e) {
-            console.error(`Error loading observer ${file}:`, e.message);
-        }
+        } catch (e) {}
     }
-    console.log(`👁️ Observers Loaded: ${observers.length}`);
 }
 
-// ================= SESSION CLOUD (FORCED) =================
+// ================= FORCED SINGLE SESSION RESTORE =================
 async function syncSessionToCloud(creds) {
     try {
         const base64 = Buffer.from(JSON.stringify(creds)).toString("base64");
         await supabase.from("vex_session").upsert({
-            id: `session_${global.clientId}`,
-            data: base64,
-            client_id: global.clientId
+            id: SESSION_ID,
+            data: base64
         });
-    } catch (e) {
-        console.error("❌ Cloud Sync Error:", e.message);
-    }
+    } catch (e) {}
 }
 
 async function loadSessionFromCloud() {
     try {
-        console.log(`🔄 FORCING SESSION RESTORE FOR: ${global.clientId}...`);
+        console.log(`🔄 ATTEMPTING TO RESTORE: ${SESSION_ID}...`);
+        // Hatutumii .single() ili kuepuka coercion error kama kuna data nyingi
         const { data, error } = await supabase
             .from("vex_session")
             .select("data")
-            .eq("id", `session_${global.clientId}`)
-            .single();
+            .eq("id", SESSION_ID);
             
         if (error) throw error;
 
-        if (data && data.data) {
-            const decoded = Buffer.from(data.data, "base64").toString("utf-8");
+        if (data && data.length > 0) {
+            const decoded = Buffer.from(data[0].data, "base64").toString("utf-8");
             if (!fs.existsSync("./session")) fs.mkdirSync("./session", { recursive: true });
             fs.writeFileSync("./session/creds.json", decoded);
-            console.log(`☁️ SUCCESS: Session GLOBAL Restored for ${global.clientId}`);
+            console.log(`☁️ SESSION ${SESSION_ID} RESTORED SUCCESSFULLY`);
             return true;
-        } else {
-            console.log("⚠️ No session data found in Supabase.");
-            return false;
         }
+        console.log("⚠️ No Session found in Cloud. Waiting for QR scan...");
+        return false;
     } catch (e) {
-        console.error("❌ FORCE RESTORE FAILED:", e.message);
+        console.error("❌ RESTORE CRITICAL ERROR:", e.message);
         return false;
     }
 }
 
-// ================= PREFIX SYNC =================
-async function syncSettings() {
-    try {
-        const { data } = await supabase
-            .from("vex_settings")
-            .select("extra_data")
-            .eq("setting_name", "prefix")
-            .eq("client_id", global.clientId)
-            .single();
-        if (data?.extra_data?.current) {
-            global.prefix = data.extra_data.current;
-        }
-        supabase
-            .channel(`prefix-${global.clientId}`)
-            .on("postgres_changes", {
-                event: "UPDATE",
-                schema: "public",
-                table: "vex_settings",
-                filter: `setting_name=eq.prefix&client_id=eq.${global.clientId}`
-            }, payload => {
-                global.prefix = payload.new.extra_data.current;
-            })
-            .subscribe();
-    } catch (e) {}
-}
-
-// ================= MAIN START =================
+// ================= MAIN ENGINE =================
 async function startVex() {
-    // Tunasubiri restore ikamilike 100% kabla ya kuanzisha Baileys
     await loadSessionFromCloud();
-    await syncSettings();
     loadCommands();
     loadObservers();
     startAutoReload();
@@ -201,7 +148,6 @@ async function startVex() {
         browser: ["VEX CORE", "Chrome", "20.0.0"]
     });
 
-    // ================= MESSAGE HANDLING =================
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const m = messages[0];
         if (!m || !m.message) return;
@@ -214,10 +160,7 @@ async function startVex() {
             try {
                 if (!obs.trigger || obs.trigger(m)) {
                     await obs.onMessage(m, sock, {
-                        supabase,
-                        cache,
-                        clientId: global.clientId,
-                        userSettings: cache.getUser?.(m.sender) || {}
+                        supabase, cache, userSettings: cache.getUser?.(m.sender) || {}
                     });
                 }
             } catch (e) {}
@@ -227,23 +170,14 @@ async function startVex() {
         
         try {
             const route = await router(m, {
-                body,
-                commands,
-                aliases,
-                observers,
-                cache,
-                supabase,
-                prefix: global.prefix,
-                clientId: global.clientId
+                body, commands, aliases, observers, cache, supabase, prefix: global.prefix
             });
-            if (!route || route.type !== "command") return;
-            await route.command.execute(m, sock, route.context);
-        } catch (e) {
-            console.error("Router Error:", e.message);
-        }
+            if (route && route.type === "command") {
+                await route.command.execute(m, sock, route.context);
+            }
+        } catch (e) {}
     });
 
-    // ================= CONNECTION =================
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) {
@@ -255,20 +189,11 @@ async function startVex() {
             if (shouldReconnect) startVex();
         }
         if (connection === "open") {
-            console.log(`✅ VEX Connected Successfully: ${global.clientId}`);
+            console.log(`✅ VEX LIVE - SESSION: ${SESSION_ID}`);
             io.emit("connected");
             await syncSessionToCloud(state.creds);
-            
             const userJid = sock.user.id.replace(/:.+/, "") + "@s.whatsapp.net";
-            const successMsg = `*VEX SYSTEM CONNECTED*\n\n` +
-                               `💠 *Prefix:* ${global.prefix}\n` +
-                               `🛠️ *Commands:* ${commands.size}\n` +
-                               `👁️ *Observers:* ${observers.length}\n` +
-                               `🌐 *Host:* VPS (Render)\n` +
-                               `🆔 *Client ID:* ${global.clientId}\n\n` +
-                               `Type *${global.prefix}menu* to start.`;
-            
-            await sock.sendMessage(userJid, { text: successMsg });
+            await sock.sendMessage(userJid, { text: `*VEX SYSTEM ONLINE*\nSession: ${SESSION_ID}\nCommands: ${commands.size}` });
         }
     });
 
@@ -278,50 +203,15 @@ async function startVex() {
     });
 }
 
-// ================= UI SERVER (UNCHANGED EXACTLY) =================
+// ================= UI SERVER =================
 app.get("/", (req, res) => {
-    res.send(`
- <!DOCTYPE html> 
- <html> 
- <head> 
- <title>VEX CORE</title> 
- <script src="/socket.io/socket.io.js"></script> 
- <style> 
- body { margin:0; height:100vh; display:flex; justify-content:center; align-items:center; background:#000; color:#00ffe1; font-family:monospace; } 
- .card { padding:20px; border-radius:20px; backdrop-filter:blur(15px); background:rgba(255,255,255,0.05); box-shadow:0 0 20px #00ffe1; text-align:center; } 
- img { margin-top:10px; border-radius:10px; } 
- </style> 
- </head> 
- <body> 
- <div class="card"> 
- <h2>VEX SYSTEM</h2> 
- <img id="qr" width="250" style="display:none;"/> 
- <p id="status">INITIALIZING...</p> 
- </div> 
- <script> 
- const socket = io(); 
- const qr = document.getElementById("qr"); 
- const status = document.getElementById("status"); 
- socket.on("qr", d => { 
- qr.src = d; 
- qr.style.display = "block"; 
- status.innerText = "SCAN QR CODE"; 
- }); 
- socket.on("connected", () => { 
- qr.style.display = "none"; 
- status.innerText = "CONNECTED"; 
- status.style.color = "#00ff00"; 
- }); 
- </script> 
- </body> 
- </html>`);
+    res.send(`<!DOCTYPE html><html><head><title>VEX CORE</title><script src="/socket.io/socket.io.js"></script><style>body { margin:0; height:100vh; display:flex; justify-content:center; align-items:center; background:#000; color:#00ffe1; font-family:monospace; }.card { padding:20px; border-radius:20px; backdrop-filter:blur(15px); background:rgba(255,255,255,0.05); box-shadow:0 0 20px #00ffe1; text-align:center; }img { margin-top:10px; border-radius:10px; }</style></head><body><div class="card"><h2>VEX SYSTEM</h2><img id="qr" width="250" style="display:none;"/><p id="status">INITIALIZING...</p></div><script>const socket = io();const qr = document.getElementById("qr");const status = document.getElementById("status");socket.on("qr", d => { qr.src = d; qr.style.display = "block"; status.innerText = "SCAN QR CODE"; });socket.on("connected", () => { qr.style.display = "none"; status.innerText = "CONNECTED"; status.style.color = "#00ff00"; });</script></body></html>`);
 });
 
 server.listen(PORT, () => {
-    console.log(`🚀 VEX Server running on port ${PORT} for client: ${global.clientId}`);
+    console.log(`🚀 VEX Server running on port ${PORT}`);
     startVex();
 });
 
-// ================= ERROR HANDLING =================
-process.on("uncaughtException", (err) => console.error("Caught exception: ", err));
-process.on("unhandledRejection", (reason, promise) => console.error("Unhandled Rejection:", reason));
+process.on("uncaughtException", (err) => console.error(err));
+process.on("unhandledRejection", (reason) => console.error(reason));
