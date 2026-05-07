@@ -7,21 +7,29 @@ module.exports = {
     description: "Promote a user to admin with high-speed execution",
 
     async execute(m, sock, { args, userSettings }) {
-        if (!m.isGroup) return m.reply("⚓ This command is for groups only.");
-        
-        const lang = args[0] && args[0].length === 2 ? args[0] : (userSettings?.lang || 'en');
-        const style = userSettings?.style || 'harsh';
 
-        // 1. UNIQUE DESIGNS (Royalty & Gear Symbols - No Lines)
+        if (!m.isGroup) {
+            return m.reply("⚓ This command is for groups only.");
+        }
+
+        const lang =
+            args[0] && args[0].length === 2
+                ? args[0]
+                : (userSettings?.lang || "en");
+
+        const style = userSettings?.style || "harsh";
+
         const modes = {
+
             harsh: {
                 msg: "♚ ᴜsᴇʀ † $number † ᴇʟᴇᴠᴀᴛᴇᴅ ᴛᴏ ᴛʜᴇ ᴛʜʀᴏɴᴇ. ⚔",
                 noBotAdmin: "⚙ ɪ ᴀᴍ ɴᴏᴛ ᴀɴ ᴀᴅᴍɪɴ. ɢɪᴠᴇ ᴍᴇ ᴛʜᴇ ʜᴀᴍᴍᴇʀ. 🤡",
                 noUserAdmin: "⚙ ʏᴏᴜ ᴀʀᴇ ᴀ ᴘᴇᴀsᴀɴᴛ. ᴅᴏɴ'ᴛ ᴛᴏᴜᴄʜ ᴍʏ ᴄᴏɴsᴏʟᴇ. 🖕",
-                targetAdmin: "⚙ ᴛʜᴇʏ ᴀʟʀᴇᴀᴅʏ ʜᴏʟᴅ ᴛʜᴇ ᴄrown. 👑",
+                targetAdmin: "⚙ ᴛʜᴇʏ ᴀʟʀᴇᴀᴅʏ ʜᴏʟᴅ ᴛʜᴇ ᴄʀᴏᴡɴ. 👑",
                 react: "🦾",
                 err: "⚓ ᴡʜᴏ ɪs ᴡᴏʀᴛʜʏ? ᴛᴀɢ, ʀᴇᴘʟʏ ᴏʀ ᴛʏᴘᴇ ᴀ ɴᴜᴍʙᴇʀ. 👺"
             },
+
             normal: {
                 msg: "♔ *User:* $number *is now an Admin.* ✅",
                 noBotAdmin: "⚙ *Error: Bot needs Admin to promote.*",
@@ -30,6 +38,7 @@ module.exports = {
                 react: "📥",
                 err: "⚓ *Identify the user via tag, reply, or number.*"
             },
+
             girl: {
                 msg: "♕ 𝓎𝒶𝓎! † $number † 𝒾𝓈 𝓃ℴ𝓌 𝒶 𝓆𝓊ℯℯ𝓃! ✨🌷",
                 noBotAdmin: "🎀 𝒾 𝓃ℯℯ𝒹 𝓉ℴ 𝒷ℯ 𝒶𝒹𝓂𝒾𝓃 𝒻𝒾𝓇𝓈𝓉 𝒷𝒶𝒷ℯ... 🌸",
@@ -42,53 +51,163 @@ module.exports = {
 
         const current = modes[style] || modes.normal;
 
-        // 2. TARGET IDENTIFICATION (Reply / Tag / Number)
-        let user = m.quoted ? m.quoted.sender : 
-                   (m.mentionedJid && m.mentionedJid[0] ? m.mentionedJid[0] : 
-                   (args[0] ? args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net' : null));
+        // TARGET DETECTION
+        let user =
+            m.quoted
+                ? m.quoted.sender
+                : (
+                    m.mentionedJid &&
+                    m.mentionedJid[0]
+                )
+                    ? m.mentionedJid[0]
+                    : (
+                        args.find(a => /\d+/.test(a))
+                    )
+                        ? args.find(a => /\d+/.test(a))
+                            .replace(/[^0-9]/g, '') +
+                          '@s.whatsapp.net'
+                        : null;
 
-        if (!user) return m.reply(current.err);
+        if (!user) {
+            return m.reply(current.err);
+        }
+
+        user = sock.decodeJid(user);
 
         try {
-            // Speed Reaction
-            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
 
-            // 3. EXECUTION FIRST (Try first to bypass delay)
-            const response = await sock.groupParticipantsUpdate(m.chat, [user], "promote");
+            // REACTION
+            await sock.sendMessage(
+                m.chat,
+                {
+                    react: {
+                        text: current.react,
+                        key: m.key
+                    }
+                }
+            );
 
-            // Handle hidden failures from server
-            if (response[0].status === "401") throw new Error("noBotAdmin");
-            if (response[0].status === "404") throw new Error("targetAdmin");
+            // PROMOTE EXECUTION
+            const response =
+                await sock.groupParticipantsUpdate(
+                    m.chat,
+                    [user],
+                    "promote"
+                );
 
-            // 4. FINAL OUTPUT
-            let rawNumber = user.split('@')[0];
-            let finalMsg = current.msg.replace('$number', rawNumber);
+            const result = response?.[0];
 
-            if (lang !== 'en') {
-                try {
-                    const res = await translate(current.msg, { to: lang });
-                    finalMsg = res.text.replace('$number', rawNumber);
-                } catch (e) { console.log("Translation skip"); }
+            if (!result) {
+                throw new Error("unknown");
             }
 
-            await sock.sendMessage(m.chat, { text: finalMsg }, { quoted: m });
+            const status = Number(result.status);
+
+            if (status === 403 || status === 401) {
+                throw new Error("noBotAdmin");
+            }
+
+            if (status === 409) {
+                throw new Error("targetAdmin");
+            }
+
+            if (status !== 200) {
+                throw new Error(`Failed with status ${status}`);
+            }
+
+            // SUCCESS MESSAGE
+            let rawNumber = user.split('@')[0];
+
+            let finalMsg =
+                current.msg.replace(
+                    '$number',
+                    rawNumber
+                );
+
+            // TRANSLATION
+            if (lang !== 'en') {
+
+                try {
+
+                    const res = await translate(
+                        current.msg,
+                        { to: lang }
+                    );
+
+                    finalMsg =
+                        res.text.replace(
+                            '$number',
+                            rawNumber
+                        );
+
+                } catch (e) {
+                    console.log("Translation skipped");
+                }
+            }
+
+            await sock.sendMessage(
+                m.chat,
+                {
+                    text: finalMsg
+                },
+                {
+                    quoted: m
+                }
+            );
 
         } catch (error) {
-            // 5. ERROR ANALYSIS (If execution fails)
-            const groupMetadata = await sock.groupMetadata(m.chat);
-            const participants = groupMetadata.participants;
-            const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-            
-            const isBotAdmin = participants.find(p => p.id === botId)?.admin;
-            const isUserAdmin = participants.find(p => p.id === m.sender)?.admin;
-            const isTargetAdmin = participants.find(p => p.id === user)?.admin;
 
-            if (!isUserAdmin) return m.reply(current.noUserAdmin);
-            if (!isBotAdmin) return m.reply(current.noBotAdmin);
-            if (isTargetAdmin) return m.reply(current.targetAdmin);
+            try {
+
+                const metadata =
+                    await sock.groupMetadata(m.chat);
+
+                const participants =
+                    metadata.participants;
+
+                const botId =
+                    sock.decodeJid(sock.user.id);
+
+                const isBotAdmin =
+                    participants.find(
+                        p => p.id === botId
+                    )?.admin;
+
+                const isUserAdmin =
+                    participants.find(
+                        p => p.id === m.sender
+                    )?.admin;
+
+                const isTargetAdmin =
+                    participants.find(
+                        p => p.id === user
+                    )?.admin;
+
+                if (!isUserAdmin) {
+                    return m.reply(current.noUserAdmin);
+                }
+
+                if (!isBotAdmin) {
+                    return m.reply(current.noBotAdmin);
+                }
+
+                if (isTargetAdmin) {
+                    return m.reply(current.targetAdmin);
+                }
+
+            } catch (metaErr) {
+                console.log(metaErr);
+            }
 
             console.error("Promote Error:", error);
-            await sock.sendMessage(m.chat, { text: `⚙ *SYSTEM ERROR:* ${error.message}` });
+
+            return sock.sendMessage(
+                m.chat,
+                {
+                    text:
+                        `⚙ *SYSTEM ERROR:* ${error.message}`
+                }
+            );
         }
     }
 };
