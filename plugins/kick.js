@@ -7,13 +7,21 @@ module.exports = {
     description: "Remove a user with high sensitivity and auto-error detection",
 
     async execute(m, sock, { args, userSettings }) {
-        if (!m.isGroup) return m.reply("☡ This command is restricted to groups.");
-        
-        const lang = args[0] && args[0].length === 2 ? args[0] : (userSettings?.lang || 'en');
-        const style = userSettings?.style || 'harsh';
 
-        // 1. DYNAMIC STYLES (No Wait Messages - New Symbols)
+        if (!m.isGroup) {
+            return m.reply("☡ This command is restricted to groups.");
+        }
+
+        const lang =
+            args[0] && args[0].length === 2
+                ? args[0]
+                : (userSettings?.lang || "en");
+
+        const style = userSettings?.style || "harsh";
+
+        // STYLES
         const modes = {
+
             harsh: {
                 msg: "☣ ᴜsᴇʀ † $number † ᴇxᴇᴄᴜᴛᴇᴅ. ᴅᴏɴ'ᴛ ᴄᴏᴍᴇ ʙᴀᴄᴋ. 💀",
                 noBotAdmin: "🛡 ɪ ᴀᴍ ᴘᴏᴡᴇʀʟᴇss. ᴍᴀᴋᴇ ᴍᴇ ᴀᴅᴍɪɴ. 🤡",
@@ -22,6 +30,7 @@ module.exports = {
                 react: "🦾",
                 err: "☡ ᴡʜᴏ ɪs ᴛʜᴇ ᴠɪᴄᴛɪᴍ? ᴛᴀɢ, ʀᴇᴘʟʏ ᴏʀ ᴛʏᴘᴇ ᴀ ɴᴜᴍʙᴇʀ. 👺"
             },
+
             normal: {
                 msg: "⚖ *User:* $number *has been removed.* ✅",
                 noBotAdmin: "⚖ *Error: Bot needs Admin rights.*",
@@ -30,6 +39,7 @@ module.exports = {
                 react: "📥",
                 err: "⚖ *Provide a target via tag, reply, or number.*"
             },
+
             girl: {
                 msg: "🌸 𝒷𝓎ℯ 𝒷𝓎ℯ! † $number † 𝒾𝓈 ℊℴ𝓃ℯ! 🌷",
                 noBotAdmin: "🎀 𝒾'𝓂 𝓃ℴ𝓉 𝒶𝒹𝓂𝒾𝓃 𝒽ℯ𝓇ℯ 𝓈𝓌ℯℯ𝓉𝒾ℯ... 🌸",
@@ -42,53 +52,165 @@ module.exports = {
 
         const current = modes[style] || modes.normal;
 
-        // 2. SMART TARGETING (Reply / Tag / Number)
-        let user = m.quoted ? m.quoted.sender : 
-                   (m.mentionedJid && m.mentionedJid[0] ? m.mentionedJid[0] : 
-                   (args[0] ? args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net' : null));
+        // TARGET DETECTION
+        let user =
+            m.quoted
+                ? m.quoted.sender
+                : (
+                    m.mentionedJid &&
+                    m.mentionedJid[0]
+                )
+                    ? m.mentionedJid[0]
+                    : (
+                        args.find(a => /\d+/.test(a))
+                    )
+                        ? args.find(a => /\d+/.test(a))
+                            .replace(/[^0-9]/g, '') +
+                          '@s.whatsapp.net'
+                        : null;
 
-        if (!user) return m.reply(current.err);
+        if (!user) {
+            return m.reply(current.err);
+        }
+
+        user = sock.decodeJid(user);
 
         try {
-            // Reaction first for speed
-            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
 
-            // 3. ATTEMPT EXECUTION (Try first, ask questions later)
-            const response = await sock.groupParticipantsUpdate(m.chat, [user], "remove");
+            // REACTION
+            await sock.sendMessage(
+                m.chat,
+                {
+                    react: {
+                        text: current.react,
+                        key: m.key
+                    }
+                }
+            );
 
-            // Check if it failed silently or returned error status
-            if (response[0].status === "401") throw new Error("noBotAdmin");
-            if (response[0].status === "404") throw new Error("targetAdmin");
+            // REMOVE EXECUTION
+            const response =
+                await sock.groupParticipantsUpdate(
+                    m.chat,
+                    [user],
+                    "remove"
+                );
 
-            // 4. SUCCESS OUTPUT
-            let rawNumber = user.split('@')[0];
-            let finalMsg = current.msg.replace('$number', rawNumber);
+            const result = response?.[0];
 
-            if (lang !== 'en') {
-                try {
-                    const res = await translate(current.msg, { to: lang });
-                    finalMsg = res.text.replace('$number', rawNumber);
-                } catch (e) { console.log("Translation skip"); }
+            if (!result) {
+                throw new Error("unknown");
             }
 
-            await sock.sendMessage(m.chat, { text: finalMsg }, { quoted: m });
+            const status = Number(result.status);
+
+            // STATUS HANDLING
+            if (status === 403 || status === 401) {
+                throw new Error("noBotAdmin");
+            }
+
+            if (status === 406 || status === 409) {
+                throw new Error("targetAdmin");
+            }
+
+            if (status !== 200) {
+                throw new Error(`Failed with status ${status}`);
+            }
+
+            // SUCCESS MESSAGE
+            let rawNumber = user.split('@')[0];
+
+            let finalMsg =
+                current.msg.replace(
+                    '$number',
+                    rawNumber
+                );
+
+            // TRANSLATION
+            if (lang !== 'en') {
+
+                try {
+
+                    const res = await translate(
+                        current.msg,
+                        { to: lang }
+                    );
+
+                    finalMsg =
+                        res.text.replace(
+                            '$number',
+                            rawNumber
+                        );
+
+                } catch (e) {
+                    console.log("Translation skipped");
+                }
+            }
+
+            await sock.sendMessage(
+                m.chat,
+                {
+                    text: finalMsg
+                },
+                {
+                    quoted: m
+                }
+            );
 
         } catch (error) {
-            // 5. ERROR DETECTION ENGINE
-            const groupMetadata = await sock.groupMetadata(m.chat);
-            const participants = groupMetadata.participants;
-            const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-            
-            const isBotAdmin = participants.find(p => p.id === botId)?.admin;
-            const isUserAdmin = participants.find(p => p.id === m.sender)?.admin;
-            const isTargetAdmin = participants.find(p => p.id === user)?.admin;
 
-            if (!isUserAdmin) return m.reply(current.noUserAdmin);
-            if (!isBotAdmin) return m.reply(current.noBotAdmin);
-            if (isTargetAdmin) return m.reply(current.targetAdmin);
+            try {
+
+                const metadata =
+                    await sock.groupMetadata(m.chat);
+
+                const participants =
+                    metadata.participants;
+
+                // FIXED BOT ID
+                const botId =
+                    sock.decodeJid(sock.user.id);
+
+                const isBotAdmin =
+                    participants.find(
+                        p => p.id === botId
+                    )?.admin;
+
+                const isUserAdmin =
+                    participants.find(
+                        p => p.id === m.sender
+                    )?.admin;
+
+                const isTargetAdmin =
+                    participants.find(
+                        p => p.id === user
+                    )?.admin;
+
+                if (!isUserAdmin) {
+                    return m.reply(current.noUserAdmin);
+                }
+
+                if (!isBotAdmin) {
+                    return m.reply(current.noBotAdmin);
+                }
+
+                if (isTargetAdmin) {
+                    return m.reply(current.targetAdmin);
+                }
+
+            } catch (metaErr) {
+                console.log(metaErr);
+            }
 
             console.error("Kick Error:", error);
-            await sock.sendMessage(m.chat, { text: `☡ *SYSTEM ERROR:* ${error.message}` });
+
+            return sock.sendMessage(
+                m.chat,
+                {
+                    text:
+                        `☡ *SYSTEM ERROR:* ${error.message}`
+                }
+            );
         }
     }
 };
