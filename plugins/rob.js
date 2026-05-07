@@ -28,6 +28,7 @@ async function processQueue() {
         const job = queue.shift();
         try {
             await runRob(job.m, job.sock, job.ctx);
+            // Dynamic sleep to avoid rate limits
             await sleep(1500);
         } catch (e) {
             console.error("ROB ERROR:", e);
@@ -46,13 +47,16 @@ async function runRob(m, sock, ctx) {
 
     const userId = m.sender;
     const groupId = m.chat;
-    const targetUser = m.mentionedJid?.[0];
+
+    // 🔥 SMART TARGET DETECTION
+    // Detects target from mentions OR quoted message
+    const targetUser = m.mentionedJid?.[0] || (m.quoted ? m.quoted.sender : null);
 
     const modes = {
         harsh: {
             win: "☣️ 𝕽𝖔𝖇 𝕾𝖚𝖈𝖈𝖊𝖘𝖘 ☣️",
             lose: "☣️ 𝕽𝖔𝖇 𝕱𝖆𝖎𝖑𝖊𝖉 ☣️",
-            jail: "☣️ 𝕮𝖆𝖚𝖌𝖍𝖙 𝖇𝖞 𝕻𝖔𝖑𝖎𝖈𝖊 ☣️",
+            jail: "☣️ 𝕮𝖆𝖚𝖍𝖙 𝖇𝖞 𝕻𝖔𝖑𝖎𝖈𝖊 ☣️",
             react: "💀"
         },
         normal: {
@@ -72,20 +76,21 @@ async function runRob(m, sock, ctx) {
     const ui = modes[style] || modes.normal;
 
     if (!targetUser) {
-        return m.reply("❌ Tag someone to rob");
+        return m.reply("❌ Tag someone or reply to their message to rob them.");
     }
 
     if (targetUser === userId) {
-        return m.reply("❌ You can't rob yourself");
+        return m.reply("❌ Don't be a fool, you can't rob yourself.");
     }
 
     // ================= COOLDOWN =================
     const now = Date.now();
     const cd = robCooldown.get(userId) || 0;
+    const COOLDOWN_TIME = 30000; // Increased to 30s for realism
 
-    if (now - cd < 20000) {
-        const remaining = Math.floor((20000 - (now - cd)) / 1000);
-        return m.reply(`⏳ Wait ${remaining}s`);
+    if (now - cd < COOLDOWN_TIME) {
+        const remaining = Math.floor((COOLDOWN_TIME - (now - cd)) / 1000);
+        return m.reply(`⏳ Chill out! You're under heat. Wait ${remaining}s`);
     }
 
     robCooldown.set(userId, now);
@@ -94,129 +99,78 @@ async function runRob(m, sock, ctx) {
         react: { text: ui.react, key: m.key }
     });
 
-    // ================= FETCH USERS =================
-    const { data: attacker } = await supabase
-        .from("g_users")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("group_id", groupId)
-        .single();
-
-    const { data: victim } = await supabase
-        .from("g_users")
-        .select("*")
-        .eq("user_id", targetUser)
-        .eq("group_id", groupId)
-        .single();
+    // ================= FETCH USERS (PARALLEL) =================
+    const [{ data: attacker }, { data: victim }] = await Promise.all([
+        supabase.from("g_users").select("*").eq("user_id", userId).eq("group_id", groupId).single(),
+        supabase.from("g_users").select("*").eq("user_id", targetUser).eq("group_id", groupId).single()
+    ]);
 
     if (!attacker || !victim) {
-        return m.reply("❌ Both users must be registered");
+        return m.reply("❌ One of the users is not registered in the VEX database.");
     }
 
-    if (victim.coins < 50) {
-        return m.reply("❌ Target too poor");
+    if (victim.coins < 100) {
+        return m.reply("❌ This target is struggling. Leave some crumbs for the poor.");
     }
 
-    // ================= AI LOGIC =================
-    const luckFactor = attacker.luck / 100;
-    const victimLuck = victim.luck / 100;
+    // ================= AI LUCK LOGIC =================
+    const attackerLuck = (attacker.luck || 50) / 100;
+    const victimLuck = (victim.luck || 50) / 100;
 
-    const baseChance = 0.5;
-
-    const successChance = baseChance + (luckFactor * 0.3) - (victimLuck * 0.3);
-
-    const policeChance = 0.2 + (victimLuck * 0.2);
-    const trapChance = 0.15;
-
+    // Base Success: 45%. Luck can swing it by ±20%
+    const successChance = 0.45 + (attackerLuck * 0.2) - (victimLuck * 0.2);
+    const policeChance = 0.15 + (victimLuck * 0.15); // Higher victim luck = higher police chance
+    
     const roll = Math.random();
+    let resultMessage = "";
+    let finalAmount = 0;
+    let status = "fail";
 
-    let result = "";
-    let amount = 0;
-
-    // ================= POLICE =================
+    // ================= BRANCHING LOGIC =================
     if (roll < policeChance) {
-        const fine = Math.floor(attacker.coins * 0.2);
-
-        await supabase
-            .from("g_users")
-            .update({
-                coins: Math.max(0, attacker.coins - fine)
-            })
-            .eq("user_id", userId)
-            .eq("group_id", groupId);
-
-        result = `${ui.jail}\n\n💸 Fine: ${fine}`;
-    }
-
-    // ================= TRAP =================
-    else if (roll < policeChance + trapChance) {
-        const loss = Math.floor(attacker.coins * 0.15);
-
-        await supabase
-            .from("g_users")
-            .update({
-                coins: Math.max(0, attacker.coins - loss)
-            })
-            .eq("user_id", userId)
-            .eq("group_id", groupId);
-
-        result = `💣 TRAP!\n\n💸 Lost: ${loss}`;
-    }
-
-    // ================= SUCCESS =================
+        // CASE: POLICE ARREST
+        const fine = Math.floor(attacker.coins * 0.25);
+        await updateCoins(supabase, userId, groupId, -fine);
+        resultMessage = `${ui.jail}\n\n💸 Police Fine: -${fine} coins`;
+    } 
     else if (roll < successChance) {
-        amount = Math.floor(victim.coins * (Math.random() * 0.3 + 0.1));
+        // CASE: SUCCESSFUL HEIST
+        finalAmount = Math.floor(victim.coins * (Math.random() * 0.25 + 0.05));
+        
+        await Promise.all([
+            updateCoins(supabase, userId, groupId, finalAmount),
+            updateCoins(supabase, targetUser, groupId, -finalAmount)
+        ]);
 
-        await supabase
-            .from("g_users")
-            .update({ coins: attacker.coins + amount })
-            .eq("user_id", userId)
-            .eq("group_id", groupId);
-
-        await supabase
-            .from("g_users")
-            .update({ coins: victim.coins - amount })
-            .eq("user_id", targetUser)
-            .eq("group_id", groupId);
-
-        result = `${ui.win}\n\n💰 Stolen: ${amount}`;
-    }
-
-    // ================= FAIL =================
+        resultMessage = `${ui.win}\n\n💰 Loot: +${finalAmount} coins`;
+        status = "win";
+    } 
     else {
-        const loss = Math.floor(attacker.coins * 0.1);
-
-        await supabase
-            .from("g_users")
-            .update({
-                coins: attacker.coins - loss
-            })
-            .eq("user_id", userId)
-            .eq("group_id", groupId);
-
-        result = `${ui.lose}\n\n💸 Lost: ${loss}`;
+        // CASE: JUST FAILED
+        const penalty = Math.floor(attacker.coins * 0.1);
+        await updateCoins(supabase, userId, groupId, -penalty);
+        resultMessage = `${ui.lose}\n\n💸 Escape cost: -${penalty} coins`;
     }
 
-    // ================= LOG =================
+    // ================= LOGGING & UI =================
     await supabase.from("g_transactions").insert({
         user_id: userId,
         group_id: groupId,
         type: "rob",
-        amount: amount,
-        status: result.includes("Success") ? "win" : "fail"
+        amount: finalAmount,
+        status: status
     });
 
-    // ================= FINAL =================
-    let msg = `
-🕵️ *ROB SYSTEM V2*
+    let rawMsg = `
+🕵️ *VEX HEIST LOG*
 
-👤 @${userId.split("@")[0]}
+👤 Attacker: @${userId.split("@")[0]}
 🎯 Target: @${targetUser.split("@")[0]}
 
-${result}
+${resultMessage}
     `;
 
-    const { text } = await translate(msg, { to: lang });
+    const { text } = await translate(rawMsg, { to: lang });
 
     await sock.sendMessage(m.chat, {
         text,
@@ -224,7 +178,13 @@ ${result}
     });
 }
 
-// ================= UTIL =================
+// ================= HELPERS =================
+async function updateCoins(supabase, uid, gid, change) {
+    const { data } = await supabase.from("g_users").select("coins").eq("user_id", uid).eq("group_id", gid).single();
+    const newBalance = Math.max(0, (data?.coins || 0) + change);
+    return supabase.from("g_users").update({ coins: newBalance }).eq("user_id", uid).eq("group_id", gid);
+}
+
 function sleep(ms) {
     return new Promise(r => setTimeout(r, ms));
 }
