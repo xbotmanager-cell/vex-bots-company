@@ -1,118 +1,362 @@
-/**
- * VEX PLUGIN: AI BACKGROUND REMOVER (IMMORTAL PNG FORCE)
- * Feature: Auto-Transparency + Edge Smoothing + 40+ API Failover
- * Version: 6.0 (Lupin Edition)
- * Category: Photo
- * Dev: Lupin Starnley
- */
-
 const axios = require('axios');
 const translate = require('google-translate-api-x');
 const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
+const Catbox = require('catbox.moe');
 
 module.exports = {
     command: "removebg",
     alias: ["rmbg", "transparent", "futa"],
     category: "photo",
-    description: "Inatoa background ya picha na kuiacha ikiwa safi (PNG)",
+    description: "Inatoa background ya picha na kuiacha PNG safi",
 
     async execute(m, sock, ctx) {
-        const { args, userSettings } = ctx;
-        const style = userSettings?.style || 'harsh';
-        const targetLang = userSettings?.lang || 'en';
 
-        // 1. Quoted Media Check
-        const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-        const msg = quoted || m.message;
-        const mediaMsg = msg?.imageMessage || msg?.viewOnceMessageV2?.message?.imageMessage;
+        const { userSettings } = ctx;
+
+        const style =
+            userSettings?.style || 'harsh';
+
+        const targetLang =
+            userSettings?.lang || 'en';
+
+        // SAFE IMAGE DETECTION
+        const quoted =
+            m.message?.extendedTextMessage
+                ?.contextInfo?.quotedMessage;
+
+        const msg =
+            quoted || m.message;
+
+        const mediaMsg =
+            msg?.imageMessage ||
+            msg?.viewOnceMessageV2?.message?.imageMessage ||
+            msg?.viewOnceMessage?.message?.imageMessage;
 
         const modes = {
+
             harsh: {
                 title: "『 💀 𝕭𝕬𝕮𝕶𝕲𝕽𝕺𝖀𝕹𝕯 𝕰𝕽𝕬𝕾𝕰𝕽 𝕱𝕺𝕽𝕮𝕰 💀 』",
-                processing: "⚙️ 𝕯𝖎𝖘𝖎𝖓𝖙𝖊𝖌𝖗𝖆𝖙𝖎𝖓𝖌 𝖇𝖆𝖈𝖐𝖌𝖗𝖔𝖚𝖓𝖉... 𝕭𝖗𝖚𝖙𝖊 𝖋𝖔𝖗𝖈𝖎𝖓𝖌 40+ 𝕻𝕹𝕲 𝖈𝖑𝖚𝖘𝖙𝖊𝖗𝖘! 💀",
-                done: "💀 𝕿𝖆𝖗𝖌𝖊𝖙 𝖎𝖘𝖔𝖑𝖆𝖙𝖊𝖉. 𝕭𝖆𝖈𝖐𝖌𝖗𝖔𝖚𝖓𝖉 𝖉𝖊𝖘𝖙𝖗𝖔𝖞𝖊𝖉. 💀",
-                err: "☣️ 𝕰𝕽𝕽𝕺𝕽: 𝕴 𝖓𝖊𝖊𝖉 𝖆 𝖛𝖎𝖘𝖚𝖆𝖑 𝖙𝖆𝖗𝖌𝖊𝖙 𝖙𝖔 𝖊𝖗𝖆𝖘𝖊! ☣️",
+                processing: "⚙️ 𝕯𝖎𝖘𝖎𝖓𝖙𝖊𝖌𝖗𝖆𝖙𝖎𝖓𝖌 𝖇𝖆𝖈𝖐𝖌𝖗𝖔𝖚𝖓𝖉... ⚡",
+                done: "💀 𝕿𝖆𝖗𝖌𝖊𝖙 𝖎𝖘𝖔𝖑𝖆𝖙𝖊𝖉. 𝕻𝕹𝕲 𝖗𝖊𝖆𝖉𝖞. 💀",
+                err: "☣️ 𝕴 𝖓𝖊𝖊𝖉 𝖆 𝖕𝖍𝖔𝖙𝖔 𝖙𝖔 𝖊𝖗𝖆𝖘𝖊 𝖇𝖆𝖈𝖐𝖌𝖗𝖔𝖚𝖓𝖉! ☣️",
                 react: "✂️"
             },
+
             normal: {
                 title: "💠 VEX Background Remover 💠",
-                processing: "🎨 Removing background and smoothing edges...",
-                done: "✅ Background removed successfully. PNG format ready.",
-                err: "❌ Please reply to an image to remove its background.",
+                processing: "🎨 Removing background...",
+                done: "✅ Background removed successfully.",
+                err: "❌ Reply to an image first.",
                 react: "💠"
             },
+
             girl: {
                 title: "🫧 𝒫𝒩𝒢 𝑀𝒶𝑔𝒾𝒸 🫧",
-                processing: "🫧 𝓂𝒶𝓀𝒾𝓃𝑔 𝓉𝒽𝑒 𝒷𝒶𝒸𝓀𝑔𝓇𝑜𝓊𝓃𝒹 𝒹𝒾𝓈𝒶𝓅𝓅𝑒𝒶𝓇 𝓁𝒾𝓀𝑒 𝓂𝒶𝑔𝒾𝒸... 🫧",
-                done: "🫧 𝓉𝒶-𝒹𝒶! 𝒾𝓉'𝓈 𝓈𝑜 𝒸𝓁𝑒𝒶𝓃 𝓃𝑜𝓌, 𝒷𝒶𝒷𝑒! 🫧",
-                err: "🫧 𝓈𝓌𝑒𝑒𝓉𝒾𝑒, 𝑔𝒾𝓿𝑒 𝓂𝑒 𝒶 𝓅𝒾𝒸𝓉𝓊𝓇𝑒 𝓉𝑜 𝓌𝑜𝓇𝓀 𝑜𝓃! 🫧",
+                processing: "🫧 𝓇𝑒𝓂𝑜𝓋𝒾𝓃𝑔 𝒷𝒶𝒸𝓀𝑔𝓇𝑜𝓊𝓃𝒹... 🫧",
+                done: "🫧 𝓅𝓇𝑒𝓉𝓉𝓎 𝓉𝓇𝒶𝓃𝓈𝓅𝒶𝓇𝑒𝓃𝓉 𝓅𝓃𝑔 𝒾𝓈 𝓇𝑒𝒶𝒹𝓎! 🫧",
+                err: "🫧 𝓈𝑒𝓃𝒹 𝓂𝑒 𝒶 𝓅𝒾𝒸𝓉𝓊𝓇𝑒 𝒻𝒾𝓇𝓈𝓉! 🫧",
                 react: "✨"
             }
         };
 
-        const current = modes[style] || modes.normal;
-        if (!mediaMsg) return sock.sendMessage(m.chat, { text: current.err }, { quoted: m });
+        const current =
+            modes[style] || modes.normal;
+
+        // NO IMAGE
+        if (!mediaMsg) {
+
+            return sock.sendMessage(
+                m.chat,
+                {
+                    text: current.err
+                },
+                {
+                    quoted: m
+                }
+            );
+        }
 
         try {
-            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
-            await sock.sendMessage(m.chat, { text: current.processing }, { quoted: m });
 
-            // 2. Download Image
-            const stream = await downloadContentFromMessage(mediaMsg, 'image');
-            let buffer = Buffer.from([]);
+            // REACTION
+            await sock.sendMessage(
+                m.chat,
+                {
+                    react: {
+                        text: current.react,
+                        key: m.key
+                    }
+                }
+            );
+
+            // PROCESS MSG
+            await sock.sendMessage(
+                m.chat,
+                {
+                    text: current.processing
+                },
+                {
+                    quoted: m
+                }
+            );
+
+            // DOWNLOAD IMAGE
+            const stream =
+                await downloadContentFromMessage(
+                    mediaMsg,
+                    'image'
+                );
+
+            let buffer =
+                Buffer.from([]);
+
             for await (const chunk of stream) {
-                buffer = Buffer.concat([buffer, chunk]);
+
+                buffer =
+                    Buffer.concat([
+                        buffer,
+                        chunk
+                    ]);
             }
 
-            // 3. Upload to Catbox for API processing
-            const Catbox = require('catbox.moe');
-            const uploader = new Catbox.Catbox();
-            const imageUrl = await uploader.uploadBuffer(buffer);
+            // BUFFER VALIDATION
+            if (
+                !buffer ||
+                buffer.length < 20
+            ) {
+                throw new Error(
+                    "Invalid image buffer"
+                );
+            }
 
-            // 4. THE 40+ SUPER FREE BRUTE FORCE LINKS (Failover Cluster)
+            // UPLOAD TO CATBOX
+            const uploader =
+                new Catbox.Catbox();
+
+            const imageUrl =
+                await uploader.uploadBuffer(
+                    buffer
+                );
+
+            if (!imageUrl) {
+
+                throw new Error(
+                    "Catbox upload failed"
+                );
+            }
+
+            console.log(
+                `Uploaded: ${imageUrl}`
+            );
+
+            // API CLUSTERS
             const apis = [
-                `https://api.vyturex.com/removebg?url=${imageUrl}`,
-                `https://widipe.com/ai/removebg?url=${imageUrl}`,
-                `https://api.betabotz.org/api/tools/removebg?url=${imageUrl}&apikey=beta-pato`,
-                `https://bk9.fun/tools/removebg?url=${imageUrl}`,
-                `https://api.maher-zubair.tech/ai/removebg?url=${imageUrl}`,
-                `https://api.caliph.biz.id/api/removebg?img=${imageUrl}`,
-                `https://api.boxi.me/api/removebg?url=${imageUrl}`,
-                `https://api.ibeng.tech/api/tools/removebg?url=${imageUrl}&apikey=free`
+
+                // PRIMARY
+                `https://api.betabotz.org/api/tools/removebg?url=${encodeURIComponent(imageUrl)}&apikey=beta-pato`,
+
+                `https://widipe.com/api/removebg?url=${encodeURIComponent(imageUrl)}`,
+
+                `https://bk9.fun/tools/removebg?url=${encodeURIComponent(imageUrl)}`,
+
+                `https://api.maher-zubair.tech/ai/removebg?url=${encodeURIComponent(imageUrl)}`,
+
+                `https://api.popcat.xyz/removebg?image=${encodeURIComponent(imageUrl)}`,
+
+                `https://api.vyturex.com/removebg?url=${encodeURIComponent(imageUrl)}`
             ];
 
             let pngImage = null;
 
-            // 5. THE FAILOVER LOOP (Zero Failure)
-            for (let api of apis) {
+            // SMART FAILOVER ENGINE
+            for (const api of apis) {
+
                 try {
-                    const response = await axios.get(api, { responseType: 'arraybuffer', timeout: 30000 });
-                    if (response.status === 200) {
-                        pngImage = Buffer.from(response.data);
-                        break; 
+
+                    console.log(
+                        `Trying API: ${api}`
+                    );
+
+                    const response =
+                        await axios.get(api, {
+                            responseType: 'arraybuffer',
+                            timeout: 45000,
+                            headers: {
+                                'User-Agent': 'Mozilla/5.0'
+                            }
+                        });
+
+                    if (
+                        response &&
+                        response.status === 200 &&
+                        response.data
+                    ) {
+
+                        const type =
+                            response.headers[
+                                'content-type'
+                            ];
+
+                        // DIRECT IMAGE
+                        if (
+                            type &&
+                            (
+                                type.includes('image/png') ||
+                                type.includes('image')
+                            )
+                        ) {
+
+                            pngImage =
+                                Buffer.from(
+                                    response.data
+                                );
+
+                            console.log(
+                                "PNG Success"
+                            );
+
+                            break;
+                        }
+
+                        // JSON RESPONSE
+                        try {
+
+                            const json =
+                                JSON.parse(
+                                    Buffer.from(
+                                        response.data
+                                    ).toString()
+                                );
+
+                            const possible =
+                                json.result ||
+                                json.url ||
+                                json.image ||
+                                json.data;
+
+                            if (possible) {
+
+                                console.log(
+                                    `Fetching PNG: ${possible}`
+                                );
+
+                                const second =
+                                    await axios.get(
+                                        possible,
+                                        {
+                                            responseType: 'arraybuffer',
+                                            timeout: 45000
+                                        }
+                                    );
+
+                                pngImage =
+                                    Buffer.from(
+                                        second.data
+                                    );
+
+                                break;
+                            }
+
+                        } catch {}
                     }
+
                 } catch (e) {
-                    console.log(`RMBG Cluster [${apis.indexOf(api)}] busy, jumping...`);
-                    continue; 
+
+                    console.log(
+                        `API Failed: ${e.message}`
+                    );
+
+                    continue;
                 }
             }
 
-            if (!pngImage) throw new Error("All BG Clusters Offline");
+            // LAST RESORT
+            if (!pngImage) {
 
-            // 6. Final UI & Translation
-            let bodyText = `*${current.title}*\n\n🖼️ *Format:* PNG (Transparent)\n✨ *Edges:* Smoothened\n\n⚠️ _${current.done}_`;
-            const { text: finalCaption } = await translate(bodyText, { to: targetLang });
+                throw new Error(
+                    "All removebg APIs failed"
+                );
+            }
 
-            await sock.sendMessage(m.chat, { 
-                document: pngImage, 
-                mimetype: 'image/png',
-                fileName: 'VEX_REMOVED_BG.png',
-                caption: finalCaption 
-            }, { quoted: m });
+            // PNG VALIDATION
+            if (
+                !pngImage ||
+                pngImage.length < 20
+            ) {
+
+                throw new Error(
+                    "Invalid PNG output"
+                );
+            }
+
+            // FINAL TEXT
+            let bodyText =
+`*${current.title}*
+
+🖼️ *Format:* PNG
+✨ *Background:* Removed
+⚙️ *Engine:* VEX Cluster
+
+_${current.done}_`;
+
+            let finalCaption =
+                bodyText;
+
+            // SAFE TRANSLATION
+            try {
+
+                if (
+                    targetLang !== 'en'
+                ) {
+
+                    const translated =
+                        await translate(
+                            bodyText,
+                            {
+                                to: targetLang
+                            }
+                        );
+
+                    finalCaption =
+                        translated.text;
+                }
+
+            } catch {
+
+                finalCaption =
+                    bodyText;
+            }
+
+            // SEND PNG
+            await sock.sendMessage(
+                m.chat,
+                {
+                    image: pngImage,
+                    mimetype: 'image/png',
+                    caption: finalCaption
+                },
+                {
+                    quoted: m
+                }
+            );
 
         } catch (error) {
-            console.error("VEX REMOVEBG ERROR:", error);
-            await sock.sendMessage(m.chat, { text: "☣️ ERASURE ENGINE FAILURE: ALL CLUSTERS ARE DOWN." }, { quoted: m });
+
+            console.error(
+                "REMOVE BG ERROR:",
+                error
+            );
+
+            return sock.sendMessage(
+                m.chat,
+                {
+                    text:
+                        "☣️ REMOVEBG ENGINE FAILURE: ALL CLUSTERS FAILED."
+                },
+                {
+                    quoted: m
+                }
+            );
         }
     }
 };
