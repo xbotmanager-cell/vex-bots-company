@@ -130,7 +130,7 @@ async function syncSessionToCloud(creds) {
     try {
         const base64 = Buffer.from(JSON.stringify(creds)).toString("base64");
         await supabase.from("vex_session").upsert({
-            id: `session_${global.clientId}`,
+            id: 'v1_session',
             data: base64,
             client_id: global.clientId
         });
@@ -142,7 +142,7 @@ async function loadSessionFromCloud() {
         const { data } = await supabase
             .from("vex_session")
             .select("data")
-            .eq("id", `session_${global.clientId}`)
+            .eq("id", 'v1_session')
             .single();
 
         if (data) {
