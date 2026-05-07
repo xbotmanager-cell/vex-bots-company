@@ -1,10 +1,10 @@
 const translate = require("google-translate-api-x");
 
 module.exports = {
-    command: "bet",
-    alias: ["gamble", "casino"],
+    command: "casino", // Changed from 'bet' to avoid conflict
+    alias: ["cas", "gamble", "v-casino"], // Removed 'bet' from alias
     category: "gamble",
-    description: "Unified casino betting engine",
+    description: "VEX Unified casino betting engine",
 
     async execute(m, sock, ctx) {
         const { args, supabase, userSettings, prefix } = ctx;
@@ -41,12 +41,14 @@ module.exports = {
         try {
             if (!type || !amount || isNaN(amount) || amount <= 0) {
                 return m.reply(`
-🎰 *CASINO ENGINE*
+🎰 *VEX CASINO ENGINE*
 
 Usage:
-${prefix}bet slots <amount>
-${prefix}bet dice <amount>
-${prefix}bet roulette <amount>
+${prefix}casino slots <amount>
+${prefix}casino dice <amount>
+${prefix}casino roulette <amount>
+
+_Note: The 'bet' command is now 'casino' to avoid conflicts._
                 `);
             }
 
@@ -59,12 +61,17 @@ ${prefix}bet roulette <amount>
                 .single();
 
             if (!user) {
-                return m.reply("❌ Profile not found");
+                return m.reply("❌ Profile not found. Please register first.");
             }
 
             if (user.coins < amount) {
-                return m.reply("❌ Not enough coins");
+                return m.reply("❌ You don't have enough coins to place this bet.");
             }
+
+            // 🔥 SMART LUCK SYSTEM
+            // Pulls luck from database (default 50 if null)
+            const userLuck = (user.luck || 50) / 100; 
+            const luckBonus = (userLuck - 0.5) * 0.2; // Can add/sub up to 10% chance
 
             let win = false;
             let multiplier = 1;
@@ -72,49 +79,53 @@ ${prefix}bet roulette <amount>
 
             // ================= SLOT GAME =================
             if (type === "slots") {
-                const symbols = ["💰", "🔥", "🍀", "💣", "👑"];
-
+                const symbols = ["💰", "🔥", "🍀", "💎", "👑"];
                 const r = () => symbols[Math.floor(Math.random() * symbols.length)];
-
+                
                 const a = r(), b = r(), c = r();
-
-                win = a === b && b === c;
-                multiplier = win ? 5 : 0;
-
+                
+                // Slots are hard, but luck helps a little
+                win = (a === b && b === c) || (Math.random() < luckBonus);
+                multiplier = 7; // Higher reward for slots
                 resultText = `[ ${a} | ${b} | ${c} ]`;
             }
 
             // ================= DICE GAME =================
-            if (type === "dice") {
+            else if (type === "dice") {
                 const roll = Math.floor(Math.random() * 6) + 1;
+                const winThreshold = 3 - (luckBonus * 2); // Easier to win if lucky
 
-                win = roll > 3;
-                multiplier = win ? 2 : 0;
-
+                win = roll > winThreshold;
+                multiplier = 2;
                 resultText = `🎲 Rolled: ${roll}`;
             }
 
             // ================= ROULETTE =================
-            if (type === "roulette") {
-                const num = Math.floor(Math.random() * 10);
+            else if (type === "roulette") {
+                const num = Math.floor(Math.random() * 37); // 0-36 standard
+                const isEven = num % 2 === 0 && num !== 0;
+                
+                win = isEven || (Math.random() < luckBonus);
+                multiplier = 1.9;
+                resultText = `🎡 Ball landed on: ${num}`;
+            }
 
-                win = num % 2 === 0;
-                multiplier = win ? 1.8 : 0;
-
-                resultText = `🎡 Number: ${num}`;
+            else {
+                return m.reply("❌ Invalid game type. Choose slots, dice, or roulette.");
             }
 
             // ================= CALCULATION =================
-            const change = win ? Math.floor(amount * multiplier) : -amount;
+            const change = win ? Math.floor(amount * (multiplier - 1)) : -amount;
+            const newBalance = Math.max(0, user.coins + change);
 
-            const newBalance = user.coins + change;
-
+            // UPDATE DATABASE
             await supabase
                 .from("g_users")
                 .update({ coins: newBalance })
                 .eq("user_id", userId)
                 .eq("group_id", groupId);
 
+            // LOG TRANSACTION
             await supabase.from("g_transactions").insert({
                 user_id: userId,
                 group_id: groupId,
@@ -128,23 +139,22 @@ ${prefix}bet roulette <amount>
             });
 
             const msg = `
-🎰 *CASINO ENGINE*
+🎰 *VEX CASINO ENGINE*
 
-🎮 Game: ${type}
+🎮 Game: ${type.toUpperCase()}
 ${resultText}
 
 ${win ? ui.win : ui.lose}
-💰 Change: ${change}
-🪙 Balance updated
+💰 Result: ${change > 0 ? "+" : ""}${change} coins
+🪙 New Balance: ${newBalance}
             `;
 
             const { text } = await translate(msg, { to: lang });
-
             await m.reply(text);
 
         } catch (e) {
             console.error("CASINO ERROR:", e);
-            await m.reply("⚠️ Casino engine failed");
+            await m.reply("⚠️ Casino engine encountered a technical fault.");
         }
     }
 };
