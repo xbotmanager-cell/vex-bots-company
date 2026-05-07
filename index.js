@@ -22,6 +22,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 
 // ================= GLOBAL =================
 global.prefix = ".";
+global.clientId = process.env.CLIENT_ID || "VEX_DEFAULT";
 
 // ================= CORE =================
 const router = require("./core/router");
@@ -129,8 +130,9 @@ async function syncSessionToCloud(creds) {
     try {
         const base64 = Buffer.from(JSON.stringify(creds)).toString("base64");
         await supabase.from("vex_session").upsert({
-            id: "v1_session",
-            data: base64
+            id: `session_${global.clientId}`,
+            data: base64,
+            client_id: global.clientId
         });
     } catch (e) {}
 }
@@ -140,14 +142,14 @@ async function loadSessionFromCloud() {
         const { data } = await supabase
             .from("vex_session")
             .select("data")
-            .eq("id", "v1_session")
+            .eq("id", `session_${global.clientId}`)
             .single();
 
         if (data) {
             const decoded = Buffer.from(data.data, "base64").toString("utf-8");
             if (!fs.existsSync("./session")) fs.mkdirSync("./session");
             fs.writeFileSync("./session/creds.json", decoded);
-            console.log("☁️ Session Restored from Supabase");
+            console.log(`☁️ Session Restored from Supabase for ${global.clientId}`);
         }
     } catch (e) {}
 }
@@ -159,6 +161,7 @@ async function syncSettings() {
             .from("vex_settings")
             .select("extra_data")
             .eq("setting_name", "prefix")
+            .eq("client_id", global.clientId)
             .single();
 
         if (data?.extra_data?.current) {
@@ -166,12 +169,12 @@ async function syncSettings() {
         }
 
         supabase
-            .channel("prefix-live")
+            .channel(`prefix-${global.clientId}`)
             .on("postgres_changes", {
                 event: "UPDATE",
                 schema: "public",
                 table: "vex_settings",
-                filter: "setting_name=eq.prefix"
+                filter: `setting_name=eq.prefix&client_id=eq.${global.clientId}`
             }, payload => {
                 global.prefix = payload.new.extra_data.current;
             })
@@ -225,6 +228,7 @@ async function startVex() {
                     await obs.onMessage(m, sock, {
                         supabase,
                         cache,
+                        clientId: global.clientId,
                         userSettings: cache.getUser?.(m.sender) || {}
                     });
                 }
@@ -241,7 +245,8 @@ async function startVex() {
                 observers,
                 cache,
                 supabase,
-                prefix: global.prefix
+                prefix: global.prefix,
+                clientId: global.clientId
             });
 
             if (!route || route.type !== "command") return;
@@ -269,7 +274,7 @@ async function startVex() {
         }
 
         if (connection === "open") {
-            console.log("✅ VEX Connected Successfully");
+            console.log(`✅ VEX Connected Successfully: ${global.clientId}`);
             io.emit("connected");
             await syncSessionToCloud(state.creds);
         }
@@ -323,7 +328,7 @@ socket.on("connected", () => {
 });
 
 server.listen(PORT, () => {
-    console.log(`🚀 VEX Server running on port ${PORT}`);
+    console.log(`🚀 VEX Server running on port ${PORT} for client: ${global.clientId}`);
     startVex();
 });
 
