@@ -7,13 +7,20 @@ module.exports = {
     description: "Remove admin rights with high-speed execution",
 
     async execute(m, sock, { args, userSettings }) {
-        if (!m.isGroup) return m.reply("⚓ This command is restricted to groups.");
-        
-        const lang = args[0] && args[0].length === 2 ? args[0] : (userSettings?.lang || 'en');
-        const style = userSettings?.style || 'harsh';
 
-        // 1. UNIQUE DESIGNS (Demotion & Fall Symbols - No Lines)
+        if (!m.isGroup) {
+            return m.reply("⚓ This command is restricted to groups.");
+        }
+
+        const lang =
+            args[0] && args[0].length === 2
+                ? args[0]
+                : (userSettings?.lang || "en");
+
+        const style = userSettings?.style || "harsh";
+
         const modes = {
+
             harsh: {
                 msg: "⚑ ᴀᴅᴍɪɴ ᴘᴏᴡᴇʀ ʀᴇᴠᴏᴋᴇᴅ ▼ $number ▼ ʙᴀᴄᴋ ᴛᴏ ᴛʜᴇ ᴅᴜsᴛ. 💀",
                 noBotAdmin: "⚒ ɪ ᴄᴀɴɴᴏᴛ sᴛʀɪᴘ ᴘᴏᴡᴇʀ ᴡɪᴛʜᴏᴜᴛ ᴀᴅᴍɪɴ ʀɪɢʜᴛs. 🤡",
@@ -22,6 +29,7 @@ module.exports = {
                 react: "🦾",
                 err: "⚓ ᴡʜᴏ ᴀʀᴇ ᴡᴇ ᴅᴇɢʀᴀᴅɪɴɢ? ᴛᴀɢ, ʀᴇᴘʟʏ ᴏʀ ᴛʏᴘᴇ ᴀ ɴᴜᴍʙᴇʀ. 👺"
             },
+
             normal: {
                 msg: "♜ *User:* $number *has been demoted to Member.* ✅",
                 noBotAdmin: "⚒ *Error: Bot needs Admin status to demote.*",
@@ -30,6 +38,7 @@ module.exports = {
                 react: "📥",
                 err: "⚓ *Identify the user via tag, reply, or number.*"
             },
+
             girl: {
                 msg: "🌸 ℴℴ𝓅𝓈𝒾ℯ! ▼ $number ▼ 𝓁ℴ𝓈т 𝓉𝒽ℯ𝒾𝓇 𝒸𝓇ℴ𝓌𝓃... ✨🌷",
                 noBotAdmin: "🎀 𝒾 𝓃ℯℯ𝒹 𝓉ℴ 𝒷ℯ 𝒶𝒹𝓂𝒾𝓃 𝒻𝒾𝓇𝓈т 𝓁ℴ𝓋ℯ... 🌸",
@@ -42,53 +51,163 @@ module.exports = {
 
         const current = modes[style] || modes.normal;
 
-        // 2. TARGET IDENTIFICATION (Reply / Tag / Number)
-        let user = m.quoted ? m.quoted.sender : 
-                   (m.mentionedJid && m.mentionedJid[0] ? m.mentionedJid[0] : 
-                   (args[0] ? args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net' : null));
+        // TARGET DETECTION
+        let user =
+            m.quoted
+                ? m.quoted.sender
+                : (
+                    m.mentionedJid &&
+                    m.mentionedJid[0]
+                )
+                    ? m.mentionedJid[0]
+                    : (
+                        args.find(a => /\d+/.test(a))
+                    )
+                        ? args.find(a => /\d+/.test(a))
+                            .replace(/[^0-9]/g, '') +
+                          '@s.whatsapp.net'
+                        : null;
 
-        if (!user) return m.reply(current.err);
+        if (!user) {
+            return m.reply(current.err);
+        }
+
+        user = sock.decodeJid(user);
 
         try {
-            // Speed Reaction
-            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
 
-            // 3. EXECUTION ATTEMPT (Bypassing pre-checks for speed)
-            const response = await sock.groupParticipantsUpdate(m.chat, [user], "demote");
+            // REACTION
+            await sock.sendMessage(
+                m.chat,
+                {
+                    react: {
+                        text: current.react,
+                        key: m.key
+                    }
+                }
+            );
 
-            // Handle server-side errors
-            if (response[0].status === "401") throw new Error("noBotAdmin");
-            if (response[0].status === "404") throw new Error("targetNotAdmin");
+            // DEMOTE EXECUTION
+            const response =
+                await sock.groupParticipantsUpdate(
+                    m.chat,
+                    [user],
+                    "demote"
+                );
 
-            // 4. OUTPUT
-            let rawNumber = user.split('@')[0];
-            let finalMsg = current.msg.replace('$number', rawNumber);
+            const result = response?.[0];
 
-            if (lang !== 'en') {
-                try {
-                    const res = await translate(current.msg, { to: lang });
-                    finalMsg = res.text.replace('$number', rawNumber);
-                } catch (e) { console.log("Translation failed."); }
+            if (!result) {
+                throw new Error("unknown");
             }
 
-            await sock.sendMessage(m.chat, { text: finalMsg }, { quoted: m });
+            const status = Number(result.status);
+
+            if (status === 403 || status === 401) {
+                throw new Error("noBotAdmin");
+            }
+
+            if (status === 409) {
+                throw new Error("targetNotAdmin");
+            }
+
+            if (status !== 200) {
+                throw new Error(`Failed with status ${status}`);
+            }
+
+            // SUCCESS MESSAGE
+            let rawNumber = user.split('@')[0];
+
+            let finalMsg =
+                current.msg.replace(
+                    '$number',
+                    rawNumber
+                );
+
+            // TRANSLATION
+            if (lang !== 'en') {
+
+                try {
+
+                    const res = await translate(
+                        current.msg,
+                        { to: lang }
+                    );
+
+                    finalMsg =
+                        res.text.replace(
+                            '$number',
+                            rawNumber
+                        );
+
+                } catch (e) {
+                    console.log("Translation skipped");
+                }
+            }
+
+            await sock.sendMessage(
+                m.chat,
+                {
+                    text: finalMsg
+                },
+                {
+                    quoted: m
+                }
+            );
 
         } catch (error) {
-            // 5. POST-ERROR ANALYSIS
-            const groupMetadata = await sock.groupMetadata(m.chat);
-            const participants = groupMetadata.participants;
-            const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-            
-            const isBotAdmin = participants.find(p => p.id === botId)?.admin;
-            const isUserAdmin = participants.find(p => p.id === m.sender)?.admin;
-            const isTargetAdmin = participants.find(p => p.id === user)?.admin;
 
-            if (!isUserAdmin) return m.reply(current.noUserAdmin);
-            if (!isBotAdmin) return m.reply(current.noBotAdmin);
-            if (!isTargetAdmin) return m.reply(current.targetNotAdmin);
+            try {
+
+                const metadata =
+                    await sock.groupMetadata(m.chat);
+
+                const participants =
+                    metadata.participants;
+
+                const botId =
+                    sock.decodeJid(sock.user.id);
+
+                const isBotAdmin =
+                    participants.find(
+                        p => p.id === botId
+                    )?.admin;
+
+                const isUserAdmin =
+                    participants.find(
+                        p => p.id === m.sender
+                    )?.admin;
+
+                const isTargetAdmin =
+                    participants.find(
+                        p => p.id === user
+                    )?.admin;
+
+                if (!isUserAdmin) {
+                    return m.reply(current.noUserAdmin);
+                }
+
+                if (!isBotAdmin) {
+                    return m.reply(current.noBotAdmin);
+                }
+
+                if (!isTargetAdmin) {
+                    return m.reply(current.targetNotAdmin);
+                }
+
+            } catch (metaErr) {
+                console.log(metaErr);
+            }
 
             console.error("Demote Error:", error);
-            await sock.sendMessage(m.chat, { text: `⚒ *SYSTEM ERROR:* ${error.message}` });
+
+            return sock.sendMessage(
+                m.chat,
+                {
+                    text:
+                        `⚒ *SYSTEM ERROR:* ${error.message}`
+                }
+            );
         }
     }
 };
