@@ -1,4 +1,5 @@
 name: VEX Universal Sync
+
 on:
   push:
     branches:
@@ -7,15 +8,16 @@ on:
 jobs:
   distribute-code:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout Master Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Inachukua history yote ili kuzuia errors za "shallow update"
 
       - name: Sync to All Clients
         env:
-          # Hapa weka Secrets zako zote unazotaka kuzi-monitor (1-10)
           TOKEN_1: ${{ secrets.CLIENT_1_TOKEN }}
           URL_1: ${{ secrets.CLIENT_1_URL }}
           TOKEN_2: ${{ secrets.CLIENT_2_TOKEN }}
@@ -26,32 +28,61 @@ jobs:
           URL_4: ${{ secrets.CLIENT_4_URL }}
           TOKEN_5: ${{ secrets.CLIENT_5_TOKEN }}
           URL_5: ${{ secrets.CLIENT_5_URL }}
-          # Unaweza kuendelea mpaka 10...
+          TOKEN_6: ${{ secrets.CLIENT_6_TOKEN }}
+          URL_6: ${{ secrets.CLIENT_6_URL }}
+          TOKEN_7: ${{ secrets.CLIENT_7_TOKEN }}
+          URL_7: ${{ secrets.CLIENT_7_URL }}
+          TOKEN_8: ${{ secrets.CLIENT_8_TOKEN }}
+          URL_8: ${{ secrets.CLIENT_8_URL }}
+          TOKEN_9: ${{ secrets.CLIENT_9_TOKEN }}
+          URL_9: ${{ secrets.CLIENT_9_URL }}
+          TOKEN_10: ${{ secrets.CLIENT_10_TOKEN }}
+          URL_10: ${{ secrets.CLIENT_10_URL }}
         run: |
-          # Loop ya kupita kwenye kila mteja (1 mpaka 10)
+          # Sanidi utambulisho wa Git
+          git config --global user.email "vex-sync@system.com"
+          git config --global user.name "VEX Sync Engine"
+          
+          # Ruhusu push bila usumbufu wa uthibitisho wa SSH
+          git config --global http.postBuffer 524288000
+
           for i in {1..10}
           do
-            # Kuchukua Token na URL kulingana na namba (i)
             TOKEN_VAR="TOKEN_$i"
             URL_VAR="URL_$i"
             
             TOKEN_VAL="${!TOKEN_VAR}"
             URL_VAL="${!URL_VAR}"
 
-            # Akili ya Script: Kama Token au URL ni tupu, ruka huyu mteja
             if [ -z "$TOKEN_VAL" ] || [ -z "$URL_VAL" ]; then
-              echo "⏩ Client $i: Data haijajazwa (Skipping...)"
               continue
             fi
 
-            echo "🚀 Client $i: Inaanza kupandisha code..."
+            echo "🛠️ Processing Target $i..."
             
-            # Safisha URL ili kuingiza Token (Inatoa https:// na kuweka Token katikati)
+            # Safisha URL na uingize Token
             CLEAN_URL=$(echo $URL_VAL | sed 's|https://||')
             FINAL_URL="https://${TOKEN_VAL}@${CLEAN_URL}"
 
-            # Amri ya kusukuma code kwa nguvu (Force Push)
-            git push "$FINAL_URL" main --force || echo "❌ Client $i: Imefeli kupandisha code!"
+            # MKAKATI WA SYNC:
+            # 1. Tunaongeza remote ya mteja kwa jina la 'target'
+            # 2. Tunapush main branch kwa nguvu (--force)
+            # 3. Tunatumia --tags kuhakikisha hata tags zimefika
             
-            echo "✅ Client $i: Code imepanda kikamilifu!"
+            echo "🚀 Target $i: Inasawazisha Miundombinu (Deep Syncing...)"
+            
+            # Tunafuta remote ya zamani kama ipo na kuweka mpya
+            git remote remove target 2>/dev/null || true
+            git remote add target "$FINAL_URL"
+            
+            # Amri kuu ya kusawazisha:
+            # Hii inahakikisha kile ulichofuta huku kinafutika kule, 
+            # na ulichoongeza huku kinaongezeka kule.
+            git push target main --force --tags || {
+              echo "❌ Client $i: Critical Fail! Checking alternative push..."
+              # Kama ikifeli, tunajaribu push ya kawaida lakini yenye nguvu
+              git push "$FINAL_URL" main:main --force
+            }
+            
+            echo "✅ Client $i: Synchronization Complete (Status: Mirror Established)"
           done
