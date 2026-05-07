@@ -206,22 +206,25 @@ async function startVex() {
         browser: ["VEX CORE", "Chrome", "20.0.0"]
     });
 
-    // ================= MESSAGE HANDLING =================
+// ================= MESSAGE HANDLING =================
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const m = messages[0];
         if (!m || !m.message) return;
 
+        // Pata body ya ujumbe (Pamoja na kusafisha nafasi)
         let body =
             m.message?.conversation ||
             m.message?.extendedTextMessage?.text ||
             m.message?.imageMessage?.caption ||
             m.message?.videoMessage?.caption ||
             "";
+        body = body.trim();
 
         m.chat = m.key.remoteJid;
         m.sender = m.key.participant || m.chat;
         m.reply = (t) => sock.sendMessage(m.chat, { text: t }, { quoted: m });
 
+        // 1. RUN OBSERVERS (Hizi zinafanya kazi wakati wote)
         for (const obs of observers) {
             try {
                 if (!obs.trigger || obs.trigger(m)) {
@@ -235,8 +238,7 @@ async function startVex() {
             } catch (e) {}
         }
 
-        if (!body.startsWith(global.prefix)) return;
-
+        // 2. ROUTER EXECUTION
         try {
             const route = await router(m, {
                 body,
@@ -249,14 +251,22 @@ async function startVex() {
                 clientId: global.clientId
             });
 
-            if (!route || route.type !== "command") return;
-            await route.command.execute(m, sock, route.context);
+            if (!route) return;
+
+            // A: Kama ni Command ya kawaida (.help, .menu nk)
+            if (route.type === "command" && route.command) {
+                await route.command.execute(m, sock, route.context);
+            } 
+            
+            // B: Kama ni AI Fallback au Custom Logic (Vex AI Bridge)
+            else if (route.type === "custom" && typeof route.execute === "function") {
+                await route.execute(sock);
+            }
 
         } catch (e) {
-            console.error("Router Error:", e.message);
+            console.error("Router Execution Error:", e.message);
         }
     });
-
     // ================= CONNECTION =================
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
