@@ -107,10 +107,29 @@ async function router(m, ctx) {
 
     // A: Traditional Command Execution
     if (isCommand && cmdName) {
+        // 🔥 FIX: Check if command exists first
         const command = commands.get(cmdName);
         if (command && typeof command.execute === "function") {
             if (command.category === "owner" && userRole !== "owner") return { type: "ignore" };
             return { type: "command", command, context };
+        }
+        
+        // 🔥 NEW FEATURE: If user typed .vex hello, handle it via bridge if no plugin exists
+        if (cmdName === "vex") {
+            const aiQuery = args.join(" ");
+            if (aiQuery) {
+                return {
+                    type: "custom",
+                    execute: async (sock) => {
+                        try {
+                            const aiResponse = await vexBridge.askAI(aiQuery, context);
+                            await sock.sendMessage(m.chat, { text: aiResponse }, { quoted: m });
+                        } catch (err) {
+                            console.error("VEX ROUTER AI CMD ERROR:", err.message);
+                        }
+                    }
+                };
+            }
         }
     }
 
@@ -125,8 +144,6 @@ async function router(m, ctx) {
     
     // Kama message haina prefix lakini ni text, tunampa Vex Bridge aichambue
     if (isText && !isCommand) {
-        // Tunachuja maneno ili AI isijibu kila kitu, bali ijibu ikitajwa 'vex' 
-        // au kama chatbot_mode ipo ON kwenye cache
         const triggerVex = body.toLowerCase().includes("vex") || context.userSettings?.chatbot_mode === true;
         
         if (triggerVex) {
@@ -134,10 +151,7 @@ async function router(m, ctx) {
                 type: "custom",
                 execute: async (sock) => {
                     try {
-                        // Uliza AI kupitia Bridge tuliyotengeneza Step 1
                         const aiResponse = await vexBridge.askAI(body, context);
-                        
-                        // Jibu message kama kawaida
                         await sock.sendMessage(m.chat, { text: aiResponse }, { quoted: m });
                     } catch (err) {
                         console.error("VEX ROUTER AI ERROR:", err.message);
