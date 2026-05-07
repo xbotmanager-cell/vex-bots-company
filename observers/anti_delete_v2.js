@@ -21,14 +21,14 @@ module.exports = {
         try {
             let config = memoryCache.get("anti_delete_enabled");
 
-            if (!config) {
+            if (config === undefined) {
                 const { data } = await supabase
                     .from("luper_config")
                     .select("is_active")
                     .eq("config_key", "anti_delete_enabled")
                     .single();
 
-                config = data?.is_active;
+                config = data?.is_active || false;
                 memoryCache.set("anti_delete_enabled", config);
                 setTimeout(() => memoryCache.delete("anti_delete_enabled"), 30000);
             }
@@ -47,14 +47,16 @@ module.exports = {
                     time: Date.now()
                 });
 
-                supabase.from("luper_buffer").upsert({
+                // TIBA YA ERROR: Tumeshindilia await na kuondoa .catch() inayozingua
+                const { error: upsertError } = await supabase.from("luper_buffer").upsert({
                     msg_id: msgId,
                     remote_jid: m.key.remoteJid,
                     participant_jid: m.key.participant || m.key.remoteJid,
                     message_content: m.message,
                     msg_type: Object.keys(m.message)[0]
-                }).catch(() => {});
+                });
 
+                if (upsertError) console.error("Supabase Upsert Error:", upsertError.message);
                 return;
             }
 
@@ -104,7 +106,6 @@ module.exports = {
             };
 
             const current = modes[style] || modes.normal;
-
             const sender = bufferedMsg.sender.split("@")[0];
             const location = bufferedMsg.jid.endsWith("@g.us") ? "Group" : "Private";
 
@@ -125,11 +126,10 @@ module.exports = {
 
             let payload = {
                 caption: translated,
-                mentions: [bufferedMsg.sender]
+                mentions: [bufferedMsg.participant_jid || bufferedMsg.sender]
             };
 
             let mediaType = null;
-
             if (type.includes("image")) mediaType = "image";
             else if (type.includes("video")) mediaType = "video";
             else if (type.includes("audio")) mediaType = "audio";
@@ -138,45 +138,40 @@ module.exports = {
 
             // ================= MEDIA DOWNLOAD =================
             let buffer = null;
-
             if (mediaType) {
                 try {
                     const stream = await downloadContentFromMessage(msg, mediaType);
-
                     let buff = Buffer.from([]);
                     for await (const chunk of stream) {
                         buff = Buffer.concat([buff, chunk]);
                     }
-
                     buffer = buff;
-                } catch {}
+                } catch (e) {
+                    console.error("Download Failed:", e.message);
+                }
             }
 
-            // ================= SEND =================
+            // ================= SEND WITH RETRY =================
             for (let i = 0; i < 3; i++) {
                 try {
                     if (buffer && mediaType) {
                         payload[mediaType] = buffer;
-
-                        // audio fix
                         if (mediaType === "audio") {
                             payload.mimetype = "audio/mp4";
                             payload.ptt = false;
                         }
-
                         await sock.sendMessage(botJid, payload);
                     } else {
                         const text =
                             bufferedMsg.content.conversation ||
                             bufferedMsg.content.extendedTextMessage?.text ||
-                            "Media";
+                            "Media Content";
 
                         await sock.sendMessage(botJid, {
                             text: `${translated}\n\n*Original:* ${text}`,
                             mentions: [bufferedMsg.sender]
                         });
                     }
-
                     return;
                 } catch {
                     await new Promise(r => setTimeout(r, 1000));
@@ -184,7 +179,7 @@ module.exports = {
             }
 
         } catch (e) {
-            console.error("ANTI DELETE ERROR:", e.message);
+            console.error("CRITICAL ANTI DELETE ERROR:", e.message);
         }
     }
 };
