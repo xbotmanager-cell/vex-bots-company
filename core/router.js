@@ -1,8 +1,11 @@
 /**
- * VEX SMART ROUTER - ERROR SHIELD & MULTI-TENANT
+ * VEX SMART ROUTER - ERROR SHIELD, MULTI-TENANT & AI BRIDGE
  * Logic: Lupin Starnley Jimmoh (VEX CEO)
- * Hii router inazuia bot ku-crash na ina-ignore database errors kwa muda.
+ * Location: core/router.js
  */
+
+// Step 2: Import Vex Bridge (Iliyo kwenye folder moja na router)
+const vexBridge = require('./vex_bridge');
 
 async function router(m, ctx) {
     const {
@@ -19,15 +22,12 @@ async function router(m, ctx) {
     const CLIENT_ID = process.env.CLIENT_ID || "GLOBAL";
     const DEVELOPER_NUMBER = "255780470905"; 
 
-    // 2. ERROR SHIELD FOR SUPABASE
-    // Hapa tuna-wrap supabase ili hata plugin ikikosea, bot isife.
+    // 2. ERROR SHIELD FOR SUPABASE (STAYED UNTOUCHED)
     const safeSupabase = new Proxy(supabase, {
         get(target, prop) {
             if (prop === 'from') {
                 return (tableName) => {
                     const originalFrom = target.from(tableName);
-                    
-                    // Tunafunika kila call inayofuata (select, upsert, n.k.)
                     const proxyHandler = {
                         get(subTarget, subProp) {
                             const originalMethod = subTarget[subProp];
@@ -35,7 +35,6 @@ async function router(m, ctx) {
                                 return (...args) => {
                                     try {
                                         const result = originalMethod.apply(subTarget, args);
-                                        // Kama ni Promise (kama upsert/select), tunakamata error yake
                                         if (result && typeof result.catch === 'function') {
                                             return result.catch(err => {
                                                 console.error(`⚠️ [VEX IGNORED ERROR] Table: ${tableName} | Op: ${subProp} | Msg: ${err.message}`);
@@ -91,7 +90,7 @@ async function router(m, ctx) {
         clientId: CLIENT_ID,
         userRole: userRole,
         userSettings: cache.getUser?.(sender) || {},
-        supabase: safeSupabase // Hapa sasa tunatuma ile supabase iliyokingwa
+        supabase: safeSupabase 
     };
 
     // 6. EXECUTION LOGIC (Commands & Observers)
@@ -106,6 +105,7 @@ async function router(m, ctx) {
         }
     }
 
+    // A: Traditional Command Execution
     if (isCommand && cmdName) {
         const command = commands.get(cmdName);
         if (command && typeof command.execute === "function") {
@@ -114,8 +114,37 @@ async function router(m, ctx) {
         }
     }
 
+    // B: Observers Execution
     if (matchedObservers.length > 0) {
         return { type: "observer", list: matchedObservers, context };
+    }
+
+    // ============================================================
+    // NEW STEP 2 LOGIC: AI FALLBACK (NO PREFIX HANDLER)
+    // ============================================================
+    
+    // Kama message haina prefix lakini ni text, tunampa Vex Bridge aichambue
+    if (isText && !isCommand) {
+        // Tunachuja maneno ili AI isijibu kila kitu, bali ijibu ikitajwa 'vex' 
+        // au kama chatbot_mode ipo ON kwenye cache
+        const triggerVex = body.toLowerCase().includes("vex") || context.userSettings?.chatbot_mode === true;
+        
+        if (triggerVex) {
+            return {
+                type: "custom",
+                execute: async (sock) => {
+                    try {
+                        // Uliza AI kupitia Bridge tuliyotengeneza Step 1
+                        const aiResponse = await vexBridge.askAI(body, context);
+                        
+                        // Jibu message kama kawaida
+                        await sock.sendMessage(m.chat, { text: aiResponse }, { quoted: m });
+                    } catch (err) {
+                        console.error("VEX ROUTER AI ERROR:", err.message);
+                    }
+                }
+            };
+        }
     }
 
     return { type: "ignore" };
