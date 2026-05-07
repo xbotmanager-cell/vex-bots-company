@@ -37,6 +37,9 @@ class VexBridge {
             TOGETHER: {
                 url: "https://api.together.xyz/v1/chat/completions",
                 model: "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+            },
+            GEMINI: {
+                url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
             }
         };
     }
@@ -69,16 +72,28 @@ class VexBridge {
     async askAI(prompt, ctx) {
         const { supabase, clientId, commands } = ctx;
 
-        // A: FETCH CONFIG FROM SQL (Using the table we created)
-        const { data: aiConfig, error } = await supabase
-            .from('vex_ai_core')
-            .select('*')
-            .eq('client_id', clientId)
-            .single();
+        // A: FETCH CONFIG (With Global Fallback - No Mandatory ClientID Restriction)
+        let aiConfig = {
+            ai_name: "VEX AI",
+            creator_name: "Lupin Starnley Jimmoh",
+            system_prompt: "You are VEX, a highly advanced AI assistant.",
+            api_priority: ["GEMINI", "GROQ", "SAMBANOVA", "TOGETHER"]
+        };
 
-        if (error || !aiConfig) {
-            console.error(`⚠️ [VEX BRIDGE] Database check failed for ${clientId}:`, error?.message);
-            return "❌ AI System Configuration not found in Supabase for this Client ID.";
+        try {
+            const { data, error } = await supabase
+                .from('vex_ai_core')
+                .select('*')
+                .eq('client_id', clientId)
+                .single();
+
+            if (data && !error) {
+                aiConfig = data;
+            } else {
+                console.warn(`⚠️ [VEX BRIDGE] No specific config for ${clientId}, using global fallback.`);
+            }
+        } catch (dbErr) {
+            console.error(`⚠️ [VEX BRIDGE] Database bypass:`, dbErr.message);
         }
 
         // B: UPDATE BRAIN MAP (Real-time knowledge)
@@ -104,7 +119,7 @@ ${systemKnowledge}
         `.trim();
 
         // D: THE FALLBACK ENGINE (Looping through priority list)
-        const priorityList = aiConfig.api_priority; // Format: ["GROQ", "SAMBANOVA", ...]
+        const priorityList = Array.isArray(aiConfig.api_priority) ? aiConfig.api_priority : ["GEMINI", "GROQ"];
         let lastError = "";
 
         for (const provider of priorityList) {
@@ -113,7 +128,7 @@ ${systemKnowledge}
                 const apiKey = process.env[`${provider}_API_KEY`];
                 
                 if (!apiKey) {
-                    console.warn(`⏩ [VEX BRIDGE] Skipping ${provider}: API Key missing in Render env.`);
+                    console.warn(`⏩ [VEX BRIDGE] Skipping ${provider}: API Key missing in environment.`);
                     continue;
                 }
 
@@ -127,7 +142,6 @@ ${systemKnowledge}
             } catch (err) {
                 lastError = err.response?.data?.error?.message || err.message;
                 console.error(`❌ [VEX BRIDGE] ${provider} failed:`, lastError);
-                // Loop inaendelea kwa API inayofuata kwenye list...
             }
         }
 
@@ -139,9 +153,9 @@ ${systemKnowledge}
      * Inashughulikia mawasiliano ya kila API provider.
      */
     async callAIProvider(provider, apiKey, system, prompt) {
-        // Shughulikia Gemini tofauti kwa sababu ina muundo tofauti wa JSON
+        // Shughulikia Gemini
         if (provider === "GEMINI") {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            const url = `${this.providers.GEMINI.url}?key=${apiKey}`;
             const res = await axios.post(url, {
                 contents: [{
                     parts: [{ text: `${system}\n\nUser: ${prompt}` }]
