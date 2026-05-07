@@ -15,10 +15,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # MUHIMU: Inazuia GitHub kuhifadhi siri za bot ambazo zinaleta 403
+          persist-credentials: false 
 
       - name: Sync to All Clients
         env:
-          # Secrets zako (1-10)
           TOKEN_1: ${{ secrets.CLIENT_1_TOKEN }}
           URL_1: ${{ secrets.CLIENT_1_URL }}
           TOKEN_2: ${{ secrets.CLIENT_2_TOKEN }}
@@ -45,7 +46,7 @@ jobs:
           git config --global user.name "VEX Sync Engine"
           git config --global http.postBuffer 524288000
           
-          # HII NDIO DAWA YA 403: Inafuta headers za bot ya GitHub Actions
+          # Futa mabaki yoyote ya headers za GitHub Actions
           git config --global --unset http.https://github.com/.extraheader || true
 
           for i in {1..10}
@@ -62,21 +63,20 @@ jobs:
             echo "-----------------------------------------------"
             echo "🛠️ TARGET $i: ANALYZING CONNECTION..."
 
-            # 2. USAFISHAJI WA URL (CLEANING ENGINE)
-            # Inatoa https://, http://, na inahakikisha mwisho kuna .git
+            # 2. USAFISHAJI WA URL
             CLEAN_URL=$(echo $U_VAL | sed -e 's|https://||g' -e 's|http://||g')
             [[ "$CLEAN_URL" != *.git ]] && CLEAN_URL="${CLEAN_URL}.git"
             
-            # FINAL_URL yenye PAT Authentication
+            # Authentication kwa kutumia x-access-token na PAT yako
             AUTH_URL="https://x-access-token:${T_VAL}@${CLEAN_URL}"
 
-            # 3. TRY-CATCH LOGIC (MARA 3)
+            # 3. FORCE MIRROR LOGIC
             SUCCESS=false
             for attempt in {1..3}
             do
               echo "🚀 Attempt $attempt: Injecting Code to $CLEAN_URL..."
               
-              # Tiba ya 403: -c http.extraheader=""
+              # -c http.extraheader="" ndiyo silaha ya mwisho dhidi ya 403
               if git -c http.extraheader="" push "$AUTH_URL" main --force --tags; then
                 echo "✅ SUCCESS: Target $i is now EQUAL to Master."
                 SUCCESS=true
@@ -88,6 +88,6 @@ jobs:
             done
 
             if [ "$SUCCESS" = false ]; then
-              echo "❌ CRITICAL: Target $i rejected all injection attempts."
+              echo "❌ CRITICAL: Target $i rejected all injection attempts. Check PAT Permissions."
             fi
           done
