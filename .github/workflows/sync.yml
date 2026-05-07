@@ -14,10 +14,11 @@ jobs:
       - name: Checkout Master Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Inachukua history yote ili kuzuia errors za "shallow update"
+          fetch-depth: 0
 
       - name: Sync to All Clients
         env:
+          # Secrets zako (1-10)
           TOKEN_1: ${{ secrets.CLIENT_1_TOKEN }}
           URL_1: ${{ secrets.CLIENT_1_URL }}
           TOKEN_2: ${{ secrets.CLIENT_2_TOKEN }}
@@ -39,50 +40,54 @@ jobs:
           TOKEN_10: ${{ secrets.CLIENT_10_TOKEN }}
           URL_10: ${{ secrets.CLIENT_10_URL }}
         run: |
-          # Sanidi utambulisho wa Git
+          # 1. GLOBAL CONFIG
           git config --global user.email "vex-sync@system.com"
           git config --global user.name "VEX Sync Engine"
-          
-          # Ruhusu push bila usumbufu wa uthibitisho wa SSH
           git config --global http.postBuffer 524288000
+          
+          # HII NDIO DAWA YA 403: Inafuta headers za bot ya GitHub Actions
+          git config --global --unset http.https://github.com/.extraheader || true
 
           for i in {1..10}
           do
             TOKEN_VAR="TOKEN_$i"
             URL_VAR="URL_$i"
-            
-            TOKEN_VAL="${!TOKEN_VAR}"
-            URL_VAL="${!URL_VAR}"
+            T_VAL="${!TOKEN_VAR}"
+            U_VAL="${!URL_VAR}"
 
-            if [ -z "$TOKEN_VAL" ] || [ -z "$URL_VAL" ]; then
+            if [ -z "$T_VAL" ] || [ -z "$U_VAL" ]; then
               continue
             fi
 
-            echo "🛠️ Processing Target $i..."
-            
-            # Safisha URL na uingize Token
-            CLEAN_URL=$(echo $URL_VAL | sed 's|https://||')
-            FINAL_URL="https://${TOKEN_VAL}@${CLEAN_URL}"
+            echo "-----------------------------------------------"
+            echo "🛠️ TARGET $i: ANALYZING CONNECTION..."
 
-            # MKAKATI WA SYNC:
-            # 1. Tunaongeza remote ya mteja kwa jina la 'target'
-            # 2. Tunapush main branch kwa nguvu (--force)
-            # 3. Tunatumia --tags kuhakikisha hata tags zimefika
+            # 2. USAFISHAJI WA URL (CLEANING ENGINE)
+            # Inatoa https://, http://, na inahakikisha mwisho kuna .git
+            CLEAN_URL=$(echo $U_VAL | sed -e 's|https://||g' -e 's|http://||g')
+            [[ "$CLEAN_URL" != *.git ]] && CLEAN_URL="${CLEAN_URL}.git"
             
-            echo "🚀 Target $i: Inasawazisha Miundombinu (Deep Syncing...)"
-            
-            # Tunafuta remote ya zamani kama ipo na kuweka mpya
-            git remote remove target 2>/dev/null || true
-            git remote add target "$FINAL_URL"
-            
-            # Amri kuu ya kusawazisha:
-            # Hii inahakikisha kile ulichofuta huku kinafutika kule, 
-            # na ulichoongeza huku kinaongezeka kule.
-            git push target main --force --tags || {
-              echo "❌ Client $i: Critical Fail! Checking alternative push..."
-              # Kama ikifeli, tunajaribu push ya kawaida lakini yenye nguvu
-              git push "$FINAL_URL" main:main --force
-            }
-            
-            echo "✅ Client $i: Synchronization Complete (Status: Mirror Established)"
+            # FINAL_URL yenye PAT Authentication
+            AUTH_URL="https://x-access-token:${T_VAL}@${CLEAN_URL}"
+
+            # 3. TRY-CATCH LOGIC (MARA 3)
+            SUCCESS=false
+            for attempt in {1..3}
+            do
+              echo "🚀 Attempt $attempt: Injecting Code to $CLEAN_URL..."
+              
+              # Tiba ya 403: -c http.extraheader=""
+              if git -c http.extraheader="" push "$AUTH_URL" main --force --tags; then
+                echo "✅ SUCCESS: Target $i is now EQUAL to Master."
+                SUCCESS=true
+                break
+              else
+                echo "⚠️ Attempt $attempt failed. Retrying in 2s..."
+                sleep 2
+              fi
+            done
+
+            if [ "$SUCCESS" = false ]; then
+              echo "❌ CRITICAL: Target $i rejected all injection attempts."
+            fi
           done
