@@ -3,7 +3,11 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 
-const MENU_IMAGE = "https://i.ibb.co/7JXpzLf6/menu.jpg";
+// PICHA YAKO MPYA
+const MENU_IMAGE = "https://i.ibb.co/4Z7Sf3q5/Chat-GPT-Image-May-8-2026-07-10-41-PM.png";
+
+// STORE YA SESSION ZA MENU - ILI ISIGONGANE
+const menuSessions = new Map();
 
 module.exports = {
     command: "menu",
@@ -15,7 +19,7 @@ module.exports = {
 
         const lang =
             args[0] && args[0].length === 2
-               ? args[0]
+              ? args[0]
                 : userSettings?.lang || "en";
 
         const style = userSettings?.style || "harsh";
@@ -163,8 +167,6 @@ ${invisible}
                 }
             });
 
-            await m.reply('⏳');
-
             if (lang!== "en") {
                 try {
                     const translated = await translate(message, { to: lang });
@@ -194,140 +196,37 @@ ${invisible}
                 console.log("MENU IMAGE FAILED:", e.message);
             }
 
-            const buttons = [
-                {
-                    buttonId: ".allmenu",
-                    buttonText: {
-                        displayText: "📜 ALL MENU"
-                    },
-                    type: 1
-                }
-            ];
-
-            if (imageBuffer) {
-                await sock.sendMessage(
+            // TUMA MENU - HAKUNA BUTTONS MAANA HAZIFANYI KAZI
+            const sentMsg = imageBuffer
+               ? await sock.sendMessage(
                     m.chat,
                     {
                         image: imageBuffer,
                         caption: message,
-                        footer: "VEX AI SYSTEM",
-                        buttons,
-                        headerType: 4,
                         mentions: [m.sender]
                     },
                     { quoted: m }
-                );
-            } else {
-                await sock.sendMessage(
+                )
+                : await sock.sendMessage(
                     m.chat,
                     {
                         text: message,
-                        footer: "VEX AI SYSTEM",
-                        buttons,
-                        headerType: 1,
                         mentions: [m.sender]
                     },
                     { quoted: m }
                 );
-            }
 
-            let active = true;
-
-            const listener = async (msg) => {
-                try {
-                    if (!active) return;
-                    if (!msg.messages) return;
-
-                    const messageData = msg.messages[0];
-                    if (!messageData.message) return;
-
-                    const from = messageData.key.remoteJid;
-                    if (from!== m.chat) return;
-
-                    const sender = messageData.key.participant || messageData.key.remoteJid;
-                    if (sender!== m.sender) return;
-
-                    const body =
-                        messageData.message.conversation ||
-                        messageData.message.extendedTextMessage?.text ||
-                        messageData.message.buttonsResponseMessage?.selectedButtonId ||
-                        "";
-
-                    if (!body) return;
-
-                    const input = body.trim();
-                    const index = parseInt(input);
-
-                    if (isNaN(index)) return;
-
-                    const chosen = sorted[index - 1];
-                    if (!chosen) return;
-
-                    active = false;
-
-                    let commands = [];
-                    const files = fs.readdirSync(pluginDir);
-
-                    for (const file of files) {
-                        if (!file.endsWith(".js")) continue;
-
-                        try {
-                            const pluginPath = path.join(pluginDir, file);
-                            delete require.cache[require.resolve(pluginPath)];
-                            const plugin = require(pluginPath);
-
-                            if (plugin.category?.toLowerCase() === chosen) {
-                                commands.push({
-                                    command: plugin.command || "unknown",
-                                    desc: plugin.description || "No description"
-                                });
-                            }
-                        } catch (e) {
-                            console.log("COMMAND LOAD ERROR:", e.message);
-                        }
-                    }
-
-                    let result = `
-╭━━━〔 📂 ${chosen.toUpperCase()} 〕━━━╮
-
-`;
-
-                    commands.forEach((cmd, i) => {
-                        result += `│ ${String(i + 1).padStart(2, "0")} ➤.${cmd.command}\n`;
-                    });
-
-                    result += `
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-⚡ Total Commands: ${commands.length}
-📡 Powered By VEX AI
-`;
-
-                    if (lang!== "en") {
-                        try {
-                            const translated = await translate(result, { to: lang });
-                            result = translated.text;
-                        } catch {}
-                    }
-
-                    await sock.sendMessage(m.chat, { text: result }, { quoted: m });
-                    sock.ev.off("messages.upsert", listener);
-
-                } catch (err) {
-                    console.error("MENU LISTENER ERROR:", err);
-                }
-            };
-
-            sock.ev.on("messages.upsert", listener);
-
-            setTimeout(() => {
-                try {
-                    if (active) {
-                        active = false;
-                        sock.ev.off("messages.upsert", listener);
-                    }
-                } catch {}
-            }, 60000);
+            // WEKA SESSION - HII NDIO INAFANYA IJIBU NAMBA
+            const sessionId = `${m.chat}_${m.sender}`;
+            menuSessions.set(sessionId, {
+                categories: sorted,
+                lang: lang,
+                pluginDir: pluginDir,
+                msgId: sentMsg.key.id,
+                timeout: setTimeout(() => {
+                    menuSessions.delete(sessionId);
+                }, 60000)
+            });
 
         } catch (err) {
             console.log("MENU ERROR:", err.message);
@@ -338,4 +237,91 @@ ${invisible}
             } catch {}
         }
     }
+};
+
+// LISTENER YA GLOBAL - INASHIKA NAMBA ZOTE
+module.exports.listener = async (sock) => {
+    sock.ev.on("messages.upsert", async (msg) => {
+        try {
+            if (!msg.messages) return;
+            const messageData = msg.messages[0];
+            if (!messageData.message || messageData.key.fromMe) return;
+
+            const from = messageData.key.remoteJid;
+            const sender = messageData.key.participant || messageData.key.remoteJid;
+            const sessionId = `${from}_${sender}`;
+
+            if (!menuSessions.has(sessionId)) return;
+
+            const body =
+                messageData.message.conversation ||
+                messageData.message.extendedTextMessage?.text ||
+                "";
+
+            if (!body) return;
+
+            const input = body.trim();
+            const index = parseInt(input);
+
+            if (isNaN(index)) return;
+
+            const session = menuSessions.get(sessionId);
+            const chosen = session.categories[index - 1];
+            if (!chosen) return;
+
+            // FUTA SESSION
+            clearTimeout(session.timeout);
+            menuSessions.delete(sessionId);
+
+            let commands = [];
+            const files = fs.readdirSync(session.pluginDir);
+
+            for (const file of files) {
+                if (!file.endsWith(".js")) continue;
+
+                try {
+                    const pluginPath = path.join(session.pluginDir, file);
+                    delete require.cache[require.resolve(pluginPath)];
+                    const plugin = require(pluginPath);
+
+                    if (plugin.category?.toLowerCase() === chosen) {
+                        commands.push({
+                            command: plugin.command || "unknown",
+                            desc: plugin.description || "No description"
+                        });
+                    }
+                } catch (e) {
+                    console.log("COMMAND LOAD ERROR:", e.message);
+                }
+            }
+
+            let result = `
+╭━━━〔 📂 ${chosen.toUpperCase()} 〕━━━╮
+
+`;
+
+            commands.forEach((cmd, i) => {
+                result += `│ ${String(i + 1).padStart(2, "0")} ➤.${cmd.command}\n`;
+            });
+
+            result += `
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+⚡ Total Commands: ${commands.length}
+📡 Powered By VEX AI
+`;
+
+            if (session.lang!== "en") {
+                try {
+                    const translated = await translate(result, { to: session.lang });
+                    result = translated.text;
+                } catch {}
+            }
+
+            await sock.sendMessage(from, { text: result }, { quoted: messageData });
+
+        } catch (err) {
+            console.error("MENU LISTENER ERROR:", err);
+        }
+    });
 };
