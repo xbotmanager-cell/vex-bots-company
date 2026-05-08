@@ -263,15 +263,26 @@ async function startVex() {
         browser: ["VEX CORE", "Chrome", "20.0.0"]
     });
 
+    // === SOCKET.IO HANDLING (PAIRING CODE) ===
     io.on("connection", (socket) => {
         socket.on("request_pairing_code", async (phoneNumber) => {
-            if (!sock.authState.creds.registered) {
-                try {
-                    const code = await sock.requestPairingCode(phoneNumber);
-                    socket.emit("pairing_code", code);
-                } catch (e) {
-                    socket.emit("pairing_error", e.message);
+            try {
+                if (!sock.authState.creds.registered) {
+                    // Safely request pairing code
+                    setTimeout(async () => {
+                        try {
+                            const code = await sock.requestPairingCode(phoneNumber);
+                            socket.emit("pairing_code", code);
+                        } catch (err) {
+                            console.error("Pairing Code Error:", err.message);
+                            socket.emit("pairing_error", "Failed to generate code. Try again.");
+                        }
+                    }, 3000); 
+                } else {
+                    socket.emit("pairing_error", "Device already registered.");
                 }
+            } catch (e) {
+                socket.emit("pairing_error", e.message);
             }
         });
     });
@@ -331,31 +342,56 @@ async function startVex() {
         }
     });
 
+    // === CONNECTION UPDATE (QR & RECONNECT) ===
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        if (qr) {
-            const qrData = await QRCode.toDataURL(qr);
-            io.emit("qr", qrData);
-        }
+        try {
+            if (qr) {
+                // Try-catch for QR Generation
+                QRCode.toDataURL(qr, (err, url) => {
+                    if (err) {
+                        console.error("QR Gen Error:", err);
+                    } else {
+                        io.emit("qr", url);
+                    }
+                });
+            }
 
-        if (connection === "close") {
-            const shouldReconnect =
-                (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (connection === "close") {
+                const reason = lastDisconnect?.error?.output?.statusCode;
+                console.log("Connection closed. Reason:", reason);
 
-            if (shouldReconnect) startVex();
-        }
+                const shouldReconnect = reason !== DisconnectReason.loggedOut;
 
-        if (connection === "open") {
-            console.log(`✅ VEX Connected Successfully: ${global.clientId}`);
-            io.emit("connected");
-            await syncSessionToCloud(state.creds);
+                if (shouldReconnect) {
+                    console.log("♻️ Reconnecting...");
+                    startVex();
+                } else {
+                    console.log("❌ Logged out. Delete session folder and restart.");
+                    if (fs.existsSync("./session")) {
+                        fs.rmSync("./session", { recursive: true, force: true });
+                    }
+                }
+            }
+
+            if (connection === "open") {
+                console.log(`✅ VEX Connected Successfully: ${global.clientId}`);
+                io.emit("connected");
+                await syncSessionToCloud(state.creds);
+            }
+        } catch (e) {
+            console.error("Connection Update Logic Error:", e.message);
         }
     });
 
     sock.ev.on("creds.update", async () => {
-        await saveCreds();
-        await syncSessionToCloud(state.creds);
+        try {
+            await saveCreds();
+            await syncSessionToCloud(state.creds);
+        } catch (e) {
+            console.error("Creds Update Error:", e.message);
+        }
     });
 }
 
