@@ -15,7 +15,7 @@ module.exports = {
 
         const lang =
             args[0] && args[0].length === 2
-                ? args[0]
+               ? args[0]
                 : userSettings?.lang || "en";
 
         const style = userSettings?.style || "harsh";
@@ -65,7 +65,6 @@ module.exports = {
 
         sorted.forEach((cat, i) => {
             const num = (i + 1).toString().padStart(2, "0");
-
             list += `│ ${num} ◈ ${cat.toUpperCase()}\n`;
         });
 
@@ -164,7 +163,9 @@ ${invisible}
                 }
             });
 
-            if (lang !== "en") {
+            await m.reply('⏳');
+
+            if (lang!== "en") {
                 try {
                     const translated = await translate(message, { to: lang });
                     message = translated.text;
@@ -176,10 +177,19 @@ ${invisible}
             try {
                 const response = await axios.get(MENU_IMAGE, {
                     responseType: "arraybuffer",
-                    timeout: 15000
+                    timeout: 20000,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'image/jpeg,image/png,image/*'
+                    }
                 });
 
-                imageBuffer = Buffer.from(response.data);
+                const contentType = response.headers['content-type'];
+                if (contentType && contentType.startsWith('image/')) {
+                    imageBuffer = Buffer.from(response.data);
+                } else {
+                    console.log("MENU IMAGE FAILED: Not an image, got", contentType);
+                }
             } catch (e) {
                 console.log("MENU IMAGE FAILED:", e.message);
             }
@@ -229,18 +239,13 @@ ${invisible}
                     if (!msg.messages) return;
 
                     const messageData = msg.messages[0];
-
                     if (!messageData.message) return;
 
                     const from = messageData.key.remoteJid;
+                    if (from!== m.chat) return;
 
-                    if (from !== m.chat) return;
-
-                    const sender =
-                        messageData.key.participant ||
-                        messageData.key.remoteJid;
-
-                    if (sender !== m.sender) return;
+                    const sender = messageData.key.participant || messageData.key.remoteJid;
+                    if (sender!== m.sender) return;
 
                     const body =
                         messageData.message.conversation ||
@@ -251,19 +256,16 @@ ${invisible}
                     if (!body) return;
 
                     const input = body.trim();
-
                     const index = parseInt(input);
 
                     if (isNaN(index)) return;
 
                     const chosen = sorted[index - 1];
-
                     if (!chosen) return;
 
                     active = false;
 
                     let commands = [];
-
                     const files = fs.readdirSync(pluginDir);
 
                     for (const file of files) {
@@ -271,19 +273,13 @@ ${invisible}
 
                         try {
                             const pluginPath = path.join(pluginDir, file);
-
                             delete require.cache[require.resolve(pluginPath)];
-
                             const plugin = require(pluginPath);
 
-                            if (
-                                plugin.category?.toLowerCase() === chosen
-                            ) {
+                            if (plugin.category?.toLowerCase() === chosen) {
                                 commands.push({
                                     command: plugin.command || "unknown",
-                                    desc:
-                                        plugin.description ||
-                                        "No description"
+                                    desc: plugin.description || "No description"
                                 });
                             }
                         } catch (e) {
@@ -297,7 +293,7 @@ ${invisible}
 `;
 
                     commands.forEach((cmd, i) => {
-                        result += `│ ${String(i + 1).padStart(2, "0")} ➤ .${cmd.command}\n`;
+                        result += `│ ${String(i + 1).padStart(2, "0")} ➤.${cmd.command}\n`;
                     });
 
                     result += `
@@ -307,24 +303,14 @@ ${invisible}
 📡 Powered By VEX AI
 `;
 
-                    if (lang !== "en") {
+                    if (lang!== "en") {
                         try {
-                            const translated = await translate(result, {
-                                to: lang
-                            });
-
+                            const translated = await translate(result, { to: lang });
                             result = translated.text;
                         } catch {}
                     }
 
-                    await sock.sendMessage(
-                        m.chat,
-                        {
-                            text: result
-                        },
-                        { quoted: m }
-                    );
-
+                    await sock.sendMessage(m.chat, { text: result }, { quoted: m });
                     sock.ev.off("messages.upsert", listener);
 
                 } catch (err) {
@@ -345,7 +331,6 @@ ${invisible}
 
         } catch (err) {
             console.log("MENU ERROR:", err.message);
-
             try {
                 await sock.sendMessage(m.chat, {
                     text: "⚠️ Menu crashed but system recovered."
