@@ -2,7 +2,7 @@ const translate = require("google-translate-api-x");
 
 module.exports = {
     command: "profile",
-    alias: ["me", "stats", "balance"],
+    alias: ["stats", "balance"],
     category: "economy",
     description: "Shows user economy profile",
 
