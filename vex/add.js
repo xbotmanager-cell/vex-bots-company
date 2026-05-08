@@ -1,5 +1,5 @@
 // VEX MINI BOT - VEX: add
-// Nova: Global group entry enforcer with automated tactical welcome.
+//
 // Dev: Lupin Starnley
 
 module.exports = {
