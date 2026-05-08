@@ -15,7 +15,11 @@ module.exports = {
     description: "Low RAM Zip: Vex AI 1080p watermark for ALL media types",
 
     async execute(m, sock, { args, userSettings }) {
-        const lang = args[0] && args[0].length === 2? args[0] : (userSettings?.lang || 'en');
+
+        const lang = args[0] && args[0].length === 2
+            ? args[0]
+            : (userSettings?.lang || 'en');
+
         const style = userSettings?.style || 'harsh';
 
         const modes = {
@@ -28,7 +32,7 @@ module.exports = {
             normal: {
                 msg: "File processed by Vex AI ✅\n*1080p | Watermarked | Zipped*",
                 react: "📦",
-                err: "❌ Reply to a file or send media with.zip",
+                err: "❌ Reply to a file or send media with .zip",
                 processing: "Processing with Vex AI... ⏳"
             },
             girl: {
@@ -40,136 +44,429 @@ module.exports = {
         };
 
         const current = modes[style] || modes.normal;
+
         const tmpDir = './tmp';
-        if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+
+        if (!fs.existsSync(tmpDir)) {
+            fs.mkdirSync(tmpDir, { recursive: true });
+        }
 
         let cleanupFiles = [];
+
         const addCleanup = (p) => cleanupFiles.push(p);
+
         const doCleanup = async () => {
             for (const file of cleanupFiles) {
-                try { await fs.promises.unlink(file); } catch {}
+                try {
+                    if (fs.existsSync(file)) {
+                        await fs.promises.unlink(file);
+                    }
+                } catch {}
             }
-        };
+        };    
 
         try {
-            // 1. Pata media: kutoka reply au message yenyewe
-            let messageContent = m.message?.extendedTextMessage?.contextInfo?.quotedMessage || m.message;
+
+            // GET MESSAGE
+            let messageContent =
+                m.message?.extendedTextMessage?.contextInfo?.quotedMessage ||
+                m.message;
+
             let type = getContentType(messageContent);
 
-            // Handle text/emoji kama.txt
-            if (!messageContent[type] || type === 'conversation' || type === 'extendedTextMessage') {
-                const text = m.message?.conversation || m.message?.extendedTextMessage?.text || '';
-                if (!text &&!m.message?.extendedTextMessage?.contextInfo?.quotedMessage) return m.reply(current.err);
-                if (!text) return m.reply(current.err); // Haina text na haina quoted
+            // TEXT MODE
+            if (
+                !messageContent[type] ||
+                type === 'conversation' ||
+                type === 'extendedTextMessage'
+            ) {
+
+                const text =
+                    m.message?.conversation ||
+                    m.message?.extendedTextMessage?.text ||
+                    '';
+
+                if (!text) {
+                    return m.reply(current.err);
+                }
 
                 const timestamp = Date.now();
+
                 const txtPath = path.join(tmpDir, `text_${timestamp}.txt`);
-                await fs.promises.writeFile(txtPath, `VEX AI 1080p\n\n${text}`);
+
+                await fs.promises.writeFile(
+                    txtPath,
+                    `VEX AI 1080P\n\n${text}`
+                );
+
                 addCleanup(txtPath);
 
                 const zipPath = path.join(tmpDir, `VexAI_${timestamp}.zip`);
+
                 const zip = new AdmZip();
+
                 zip.addLocalFile(txtPath);
+
                 zip.writeZip(zipPath);
+
                 addCleanup(zipPath);
 
-                await m.reply(`${current.msg}\n\n_VEX AI 1080p Text_`, {
-                    document: await fs.promises.readFile(zipPath),
-                    mimetype: 'application/zip',
-                    fileName: `VexAI_Text_${timestamp}.zip`
-                }, { quoted: m });
+                await sock.sendMessage(
+                    m.chat,
+                    {
+                        document: createReadStream(zipPath),
+                        mimetype: 'application/zip',
+                        fileName: `VexAI_Text_${timestamp}.zip`,
+                        caption: current.msg
+                    },
+                    { quoted: m }
+                );
+
                 return await doCleanup();
             }
 
             const media = messageContent[type];
-            const supportedTypes = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage'];
-            if (!supportedTypes.includes(type)) return m.reply(current.err);
 
-            await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
+            const supportedTypes = [
+                'imageMessage',
+                'videoMessage',
+                'audioMessage',
+                'documentMessage',
+                'stickerMessage'
+            ];
+
+            if (!supportedTypes.includes(type)) {
+                return m.reply(current.err);
+            }
+
+            await sock.sendMessage(m.chat, {
+                react: {
+                    text: current.react,
+                    key: m.key
+                }
+            });
+
             const processMsg = await m.reply(current.processing);
 
-            // 2. Download kwa stream - LOW RAM
+            // MEDIA TYPE
             let mediaType = type.replace('Message', '');
+
             if (mediaType === 'sticker') mediaType = 'image';
-            if (mediaType === 'document') mediaType = media.mimetype.split('/')[0]; // image/video/audio
+
+            if (mediaType === 'document') {
+                mediaType = media.mimetype?.split('/')[0] || 'document';
+            }
 
             const timestamp = Date.now();
-            const ext = media.mimetype?.split('/')[1]?.split(';')[0] || 'bin';
-            const inputPath = path.join(tmpDir, `input_${timestamp}.${ext}`);
+
+            const ext =
+                media.mimetype?.split('/')[1]?.split(';')[0] ||
+                (type === 'videoMessage' ? 'mp4' : 'jpg');
+
+            const inputPath = path.join(
+                tmpDir,
+                `input_${timestamp}.${ext}`
+            );
+
             addCleanup(inputPath);
 
-            const stream = await downloadContentFromMessage(media, mediaType);
-            await pipeline(stream, createWriteStream(inputPath)); // Haisomi RAM, anaandika direct
+            // DOWNLOAD
+            try {
+
+                const stream = await downloadContentFromMessage(
+                    media,
+                    mediaType
+                );
+
+                await pipeline(
+                    stream,
+                    createWriteStream(inputPath)
+                );
+
+            } catch (e) {
+
+                console.error("DOWNLOAD ERROR:", e);
+
+                return m.reply("❌ Failed downloading media.");
+            }
 
             const outputName = `vex_ai_1080p_${timestamp}`;
+
             let outputPath = '';
 
-            // 3. Process - LOW RAM: sharp + ffmpeg zote zinatumia file, sio buffer
-            if (type === 'imageMessage' || type === 'stickerMessage') {
-                outputPath = path.join(tmpDir, `${outputName}.jpg`);
-                const watermarkSvg = `<svg width="400" height="80"><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="40" fill="white" stroke="black" stroke-width="2" opacity="0.7">VEX AI 1080p</text></svg>`;
+            // WATERMARK SVG
+            const watermarkSvg = `
+<svg width="420" height="120">
+<style>
+.title {
+fill:white;
+font-size:24px;
+font-family:Arial;
+font-weight:bold;
+opacity:0.92;
+}
+.atom {
+fill:none;
+stroke:#ffffff;
+stroke-width:2;
+opacity:0.82;
+}
+</style>
 
-                await sharp(inputPath)
-                   .resize(1920, 1080, { fit: 'inside', withoutEnlargement: true })
-                   .composite([{ input: Buffer.from(watermarkSvg), gravity: 'southeast' }])
-                   .jpeg({ quality: 95 }) // High quality
-                   .toFile(outputPath);
-                addCleanup(outputPath);
+<g transform="translate(15,15)">
+<ellipse class="atom" cx="26" cy="26" rx="22" ry="9"/>
+<ellipse class="atom" cx="26" cy="26" rx="22" ry="9" transform="rotate(60 26 26)"/>
+<ellipse class="atom" cx="26" cy="26" rx="22" ry="9" transform="rotate(-60 26 26)"/>
+<circle cx="26" cy="26" r="4" fill="white"/>
+</g>
 
-            } else if (type === 'videoMessage') {
-                outputPath = path.join(tmpDir, `${outputName}.mp4`);
-                await new Promise((resolve, reject) => {
-                    ffmpeg(inputPath)
-                       .videoFilters([
-                            "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
-                            "drawtext=text='VEX AI 1080p':fontcolor=white:fontsize=40:box=1:boxcolor=black@0.5:boxborderw=5:x=w-tw-20:y=h-th-20"
+<text x="70" y="42" class="title">VEX AI</text>
+</svg>
+`;
+
+            // IMAGE
+            if (
+                type === 'imageMessage' ||
+                type === 'stickerMessage'
+            ) {
+
+                outputPath = path.join(
+                    tmpDir,
+                    `${outputName}.jpg`
+                );
+
+                try {
+
+                    const image = sharp(inputPath, {
+                        failOnError: false
+                    });
+
+                    const metadata = await image.metadata();
+
+                    const finalWidth =
+                        metadata.width > 1920
+                            ? 1920
+                            : metadata.width || 1080;
+
+                    const finalHeight =
+                        metadata.height > 1080
+                            ? 1080
+                            : metadata.height || 1080;
+
+                    await image
+                        .resize(finalWidth, finalHeight, {
+                            fit: 'inside',
+                            withoutEnlargement: true
+                        })
+                        .composite([
+                            {
+                                input: Buffer.from(watermarkSvg),
+                                gravity: 'southeast',
+                                blend: 'over',
+                                top: 0,
+                                left: 0
+                            }
                         ])
-                       .videoCodec('libx264').audioCodec('copy')
-                       .outputOptions(['-crf 23', '-preset ultrafast']) // ultrafast = RAM ndogo
-                       .save(outputPath)
-                       .on('end', resolve).on('error', reject);
-                });
-                addCleanup(outputPath);
+                        .jpeg({
+                            quality: 97,
+                            mozjpeg: true
+                        })
+                        .toFile(outputPath);
 
-            } else { // audioMessage, documentMessage
-                outputPath = path.join(tmpDir, `${outputName}.${ext}`);
-                await new Promise((resolve, reject) => {
-                    ffmpeg(inputPath)
-                       .audioCodec('copy')
-                       .outputOptions(['-metadata', 'title=VEX AI 1080p', '-metadata', 'artist=Vex AI'])
-                       .save(outputPath)
-                       .on('end', resolve).on('error', reject);
-                });
+                } catch (e) {
+
+                    console.error("IMAGE PROCESS ERROR:", e);
+
+                    await fs.promises.copyFile(
+                        inputPath,
+                        outputPath
+                    );
+                }
+
                 addCleanup(outputPath);
             }
 
-            // 4. Zip - LOW RAM
-            const zipPath = path.join(tmpDir, `VexAI_${timestamp}.zip`);
-            const zip = new AdmZip();
-            zip.addLocalFile(outputPath);
-            zip.writeZip(zipPath);
-            addCleanup(zipPath);
+            // VIDEO
+            else if (type === 'videoMessage') {
 
-            // 5. Translate + Tuma
+                outputPath = path.join(
+                    tmpDir,
+                    `${outputName}.mp4`
+                );
+
+                try {
+
+                    await new Promise((resolve) => {
+
+                        ffmpeg(inputPath)
+                            .videoFilters([
+                                "scale='min(1920,iw)':min'(1080,ih)':force_original_aspect_ratio=decrease",
+                                "drawtext=text='⚛ VEX AI':fontcolor=white:fontsize=20:box=1:boxcolor=black@0.35:boxborderw=6:x=w-tw-18:y=h-th-18"
+                            ])
+                            .videoCodec('libx264')
+                            .audioCodec('aac')
+                            .outputOptions([
+                                '-preset ultrafast',
+                                '-crf 23',
+                                '-movflags +faststart'
+                            ])
+                            .on('end', resolve)
+                            .on('error', async (err) => {
+
+                                console.error("VIDEO PROCESS ERROR:", err);
+
+                                try {
+                                    await fs.promises.copyFile(
+                                        inputPath,
+                                        outputPath
+                                    );
+                                } catch {}
+
+                                resolve();
+                            })
+                            .save(outputPath);
+                    });
+
+                } catch (e) {
+
+                    console.error("VIDEO OUTER ERROR:", e);
+
+                    try {
+                        await fs.promises.copyFile(
+                            inputPath,
+                            outputPath
+                        );
+                    } catch {}
+                }
+
+                addCleanup(outputPath);
+            }
+
+            // AUDIO/DOCUMENT
+            else {
+
+                outputPath = path.join(
+                    tmpDir,
+                    `${outputName}.${ext}`
+                );
+
+                try {
+
+                    await fs.promises.copyFile(
+                        inputPath,
+                        outputPath
+                    );
+
+                } catch (e) {
+
+                    console.error("COPY ERROR:", e);
+
+                    return m.reply("❌ Failed processing file.");
+                }
+
+                addCleanup(outputPath);
+            }
+
+            // ZIP
+            const zipPath = path.join(
+                tmpDir,
+                `VexAI_${timestamp}.zip`
+            );
+
+            try {
+
+                const zip = new AdmZip();
+
+                zip.addLocalFile(outputPath);
+
+                zip.writeZip(zipPath);
+
+                addCleanup(zipPath);
+
+            } catch (e) {
+
+                console.error("ZIP ERROR:", e);
+
+                return m.reply("❌ Failed zipping file.");
+            }
+
+            // TRANSLATE
             let finalMsg = current.msg;
-            if (lang!== 'en') {
-                try { finalMsg = (await translate(finalMsg, { to: lang })).text; } catch {}
+
+            if (lang !== 'en') {
+                try {
+                    finalMsg = (
+                        await translate(finalMsg, { to: lang })
+                    ).text;
+                } catch {}
             }
 
-            await sock.sendMessage(m.chat, { delete: processMsg.key });
-            await sock.sendMessage(m.chat, {
-                document: createReadStream(zipPath), // Stream tena - LOW RAM
-                mimetype: 'application/zip',
-                fileName: `VexAI_1080p_${timestamp}.zip`,
-                caption: finalMsg
-            }, { quoted: m });
+            // DELETE PROCESS MSG
+            try {
+                await sock.sendMessage(m.chat, {
+                    delete: processMsg.key
+                });
+            } catch {}
+
+            // SEND
+            try {
+
+                await sock.sendMessage(
+                    m.chat,
+                    {
+                        document: createReadStream(zipPath),
+                        mimetype: 'application/zip',
+                        fileName: `VexAI_1080p_${timestamp}.zip`,
+                        caption: finalMsg
+                    },
+                    { quoted: m }
+                );
+
+            } catch (e) {
+
+                console.error("SEND ERROR:", e);
+
+                try {
+
+                    await sock.sendMessage(
+                        m.chat,
+                        {
+                            document: fs.readFileSync(zipPath),
+                            mimetype: 'application/zip',
+                            fileName: `VexAI_1080p_${timestamp}.zip`,
+                            caption: finalMsg
+                        },
+                        { quoted: m }
+                    );
+
+                } catch {
+
+                    return m.reply("❌ Failed sending file.");
+                }
+            }
 
         } catch (error) {
-            console.error("Vex Zip Error:", error);
-            await sock.sendMessage(m.chat, { react: { text: "🚫", key: m.key } });
-            m.reply("❌ Failed. File too large for free tier or corrupted.");
+
+            console.error("VEX ZIP ERROR:", error);
+
+            try {
+
+                await sock.sendMessage(m.chat, {
+                    react: {
+                        text: "🚫",
+                        key: m.key
+                    }
+                });
+
+            } catch {}
+
+            return m.reply(
+                "❌ Failed. File too large, unsupported or corrupted."
+            );
+
         } finally {
-            await doCleanup(); // Cleanup hata error ikitokea
+
+            await doCleanup();
         }
     }
 };
