@@ -2,7 +2,20 @@ const axios = require('axios');
 const translate = require('google-translate-api-x');
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROY_KEY);
+// --- SUPER SAFETY SUPABASE INITIALIZATION ---
+let supabase = null;
+let supabaseStatus = "Online";
+
+try {
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROY_KEY) {
+        supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROY_KEY);
+    } else {
+        supabaseStatus = "Offline (Missing ENV)";
+    }
+} catch (e) {
+    supabaseStatus = "Offline (Init Error)";
+    console.error("Supabase fail to start:", e.message);
+}
 
 // Helper: GitHub API
 const gh = axios.create({
@@ -25,26 +38,24 @@ const renderApi = axios.create({
     timeout: 20000
 });
 
-// Helper: Extract code from prompt after "code:"
 function extractCode(text) {
     const match = text.match(/code:\s*([\s\S]+)/i);
-    return match? match[1].trim() : null;
+    return match ? match[1].trim() : null;
 }
 
-// Helper: Get file SHA for GitHub update
 async function getFileSha(path) {
     try {
         const { data } = await gh.get(`/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/contents/${path}`);
         return data.sha;
     } catch {
-        return null; // File haipo, ni mpya
+        return null;
     }
 }
 
 module.exports = {
     command: "lex",
     category: "ai",
-    description: "Vex AI Super Agent by Lupin Starnley - Chat + GitHub + Render",
+    description: "Vex AI Super Agent by Lupin Starnley - Safe Edition",
 
     async execute(m, sock, { args, userSettings, user }) {
         const prompt = args.join(' ');
@@ -64,35 +75,33 @@ module.exports = {
         await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
         await m.reply('⏳');
 
+        // --- SAFE LOGGING WRAPPER ---
         const logAction = async (type, target, details, status = 'success', error = null) => {
-            const { error: supabaseError } = await supabase.from('vc_action_logs').insert({
-                user_id: userId,
-                action_type: type,
-                action_target: target,
-                action_details: details,
-                status,
-                error_message: error,
-                ram_warning: status === 'ram_warning'
-            });
-            if (supabaseError) console.log("Supabase Log Error:", supabaseError.message);
+            if (!supabase) return; // Bypass if DB is not initialized
+            try {
+                await supabase.from('vc_action_logs').insert({
+                    user_id: userId,
+                    action_type: type,
+                    action_target: target,
+                    action_details: details,
+                    status,
+                    error_message: error,
+                    ram_warning: status === 'ram_warning'
+                });
+            } catch (e) {
+                console.log("Supabase Logging Failed (Silently)");
+            }
         };
 
         const systemPrompt = `You are Vex AI, a Super Agent WhatsApp bot created by Lupin Starnley.
-You run on Render FREE TIER with 512MB RAM. You are NOT ChatGPT, Gemini, or Claude.
+DATABASE STATUS: ${supabaseStatus}. 
+IMPORTANT: Ikiwa status sio "Online", mwishoni kabisa mwa jibu lako (kama ni jibu la maana) andika: "Database imekaa vibaya kaka, ila nimejibu."
 
-CORE RULES:
-1. You have 3 brains: CHAT, AGENT, DEVOPS. Detect user intent from prompt.
-2. If prompt starts with "vex" or mentions repo/server/plugin/file: use AGENT or DEVOPS brain.
-3. If normal question: use CHAT brain with 6 API fallback.
-4. NEVER load 2 GitHub files at once. If user asks "read all plugins", say: "Duh kaka hapa tutakula RAM 400MB. Taja 1 tu nichague".
-5. If file >100KB, warn user: "File kubwa kaka, nisome lines 50 za kwanza?"
-6. If GitHub/Render API fails, explain error clearly: "Token imegomaa kaka, check GITHUB_TOKEN Render" or "Service ID sio sahihi".
-7. You have Supabase memory. Use it to remember user history.
-8. Never mention underlying models or APIs. You are Vex AI only.
-9. Current style: ${style}. User lang: ${lang}.
-10. Be concise. Free tier haipendi maneno mengi.
-
-AVAILABLE ACTIONS: read_file, write_file, delete_file, list_plugins, render_status, render_restart, render_logs`;
+RULES:
+1. You have 3 brains: CHAT, AGENT, DEVOPS. Detect intent.
+2. RAM: 512MB Render. Be concise.
+3. If GitHub/Render fails, explain why.
+4. Current style: ${style}. Lang: ${lang}.`;
 
         try {
             const isAgentQuery = /^(vex|server|restart|plugin|repo|github|file|tiktok|zip|download|andika|futa|logs)/i.test(prompt);
@@ -101,15 +110,11 @@ AVAILABLE ACTIONS: read_file, write_file, delete_file, list_plugins, render_stat
 
             if (isAgentQuery) {
                 commandType = 'agent';
-                const agentPrompt = `User request: "${prompt}"\n\nBased on rules, what action should I take? Reply ONLY JSON: {"action":"list_plugins|read_file|write_file|delete_file|render_status|render_restart|render_logs|chat","target":"path/or/id","reason":"short reason","warning":"ram warning if any"}`;
-
+                const agentPrompt = `User request: "${prompt}"\nReply ONLY JSON: {"action":"list_plugins|read_file|write_file|delete_file|render_status|render_restart|render_logs|chat","target":"path/or/id","reason":"short reason","warning":"ram warning if any"}`;
+                
                 const actionRes = await callAI(agentPrompt, 'You are Vex AI Agent Controller. Reply JSON only.');
                 let action = {};
-                try {
-                    action = JSON.parse(actionRes.replace(/```json|```/g, '').trim());
-                } catch {
-                    action = { action: 'chat', reason: 'Failed to parse agent intent' };
-                }
+                try { action = JSON.parse(actionRes.replace(/```json|```/g, '').trim()); } catch { action = { action: 'chat' }; }
 
                 if (action.warning) {
                     await m.reply(`⚠️ RAM Warning: ${action.warning}`);
@@ -124,175 +129,92 @@ AVAILABLE ACTIONS: read_file, write_file, delete_file, list_plugins, render_stat
                         const { data } = await gh.get(`/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/contents/${process.env.GITHUB_PLUGINS_PATH}`);
                         const pluginNames = data.filter(f => f.name.endsWith('.js')).map(f => f.name.replace('.js', ''));
 
-                        const { error } = await supabase.from('vc_plugin_cache').upsert(
-                            pluginNames.map(n => ({
-                                plugin_name: n,
-                                plugin_path: `${process.env.GITHUB_PLUGINS_PATH}/${n}.js`
-                            })),
-                            { onConflict: 'plugin_name' }
-                        );
-                        if (error) console.log("Cache Error:", error.message);
-
-                        response = `🧠 Vex AI Agent:\nNimepata plugins ${pluginNames.length} kaka:\n\n${pluginNames.map(p => `• ${p}`).join('\n')}\n\nTaja 1 unayoitaka nisome:.lex vex soma zip`;
-                    } catch (e) {
-                        response = `❌ GitHub Error: ${e.response?.data?.message || e.message}\nCheck: GITHUB_TOKEN, GITHUB_OWNER, GITHUB_REPO Render.`;
-                        await logAction('github_read', process.env.GITHUB_PLUGINS_PATH, action, 'failed', response);
-                    }
-                }
-
-                // 3B. READ FILE
+                        // Safe Cache Update
+                        if (supabase) {
+                            try {
+                                await supabase.from('vc_plugin_cache').upsert(
+                                    pluginNames.map(n => ({ plugin_name: n, plugin_path: `${process.env.GITHUB_PLUGINS_PATH}/${n}.js` })),
+                                    { onConflict: 'plugin_name' }
+                                );
+                            } catch (ce) {}
+                        }
+                        response = `🧠 Vex Plugins:\n${pluginNames.map(p => `• ${p}`).join('\n')}`;
+                    } catch (e) { response = `❌ GitHub Error: ${e.message}`; }
+                } 
                 else if (action.action === 'read_file') {
                     let path = action.target;
-                    if (!path) return m.reply("❌ Sema file gani kaka. Mfano:.lex vex soma plugins/zip.js");
+                    if (!path) return m.reply("❌ Sema file gani.");
                     if (!path.includes('/')) path = `${process.env.GITHUB_PLUGINS_PATH}/${path}.js`;
-
                     await logAction('github_read', path, action);
                     try {
                         const { data } = await gh.get(`/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/contents/${path}`);
-                        if (data.size > 100000) {
-                            response = `⚠️ Duh kaka file kubwa ${(data.size/1024).toFixed(1)}KB. Hapa tutakula RAM.\nNisome lines 50 za kwanza? Jibu:.lex vex soma ${path} 50`;
-                        } else {
-                            const content = Buffer.from(data.content, 'base64').toString('utf8');
-                            const summary = await callAI(`Summarize this plugin code in 5 lines Swahili. Code:\n${content.slice(0, 2000)}`, systemPrompt);
-                            response = `📄 File: ${path}\nSize: ${(data.size/1024).toFixed(1)}KB\n\n${summary}`;
-                        }
-                    } catch (e) {
-                        response = `❌ Sijaipata ${path}\nError: ${e.response?.data?.message || e.message}`;
-                        await logAction('github_read', path, action, 'failed', response);
-                    }
+                        const content = Buffer.from(data.content, 'base64').toString('utf8');
+                        response = `📄 File: ${path}\n\n${content.slice(0, 1000)}...`;
+                    } catch (e) { response = `❌ Sijaipata ${path}`; }
                 }
-
-                // 3C. WRITE FILE - FIXED
                 else if (action.action === 'write_file') {
                     const code = extractCode(prompt);
                     let path = action.target;
-                    if (!path ||!code) {
-                        return m.reply("❌ Format sahihi:.lex vex andika plugins/say.js code: module.exports = {command: 'say'}");
-                    }
-                    if (!path.includes('/')) path = `${process.env.GITHUB_PLUGINS_PATH}/${path}.js`;
-
+                    if (!path || !code) return m.reply("❌ Format mbovu.");
                     await logAction('github_write', path, { intent: 'write' });
                     try {
                         const sha = await getFileSha(path);
                         const content = Buffer.from(code).toString('base64');
-                        const payload = {
-                            message: `Vex AI: ${sha? 'Update' : 'Create'} ${path}`,
-                            content,
-                            branch: process.env.GITHUB_BRANCH || 'main'
-                        };
-                        if (sha) payload.sha = sha;
-
-                        await gh.put(`/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/contents/${path}`, payload);
-                        response = `✅ Vex AI Agent:\nNimeandika ${path} kaka.\nRender inadeploy sasa. Subiri 1min alafu jaribu command.`;
-                        await logAction('github_write', path, { success: true }, 'success');
-                    } catch (e) {
-                        response = `❌ Imeshindwa kuandika ${path}\nError: ${e.response?.data?.message || e.message}\nCheck: GITHUB_TOKEN ina 'contents:write'?`;
-                        await logAction('github_write', path, action, 'failed', response);
-                    }
-                }
-
-                // 3D. DELETE FILE - MPYA
-                else if (action.action === 'delete_file') {
-                    let path = action.target;
-                    if (!path) return m.reply("❌ Sema file gani ufute. Mfano:.lex vex futa plugins/test.js");
-                    if (!path.includes('/')) path = `${process.env.GITHUB_PLUGINS_PATH}/${path}.js`;
-
-                    await logAction('github_delete', path, action);
-                    try {
-                        const sha = await getFileSha(path);
-                        if (!sha) return m.reply(`❌ File ${path} haipo kaka.`);
-
-                        await gh.delete(`/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/contents/${path}`, {
-                            data: {
-                                message: `Vex AI: Delete ${path}`,
-                                sha,
-                                branch: process.env.GITHUB_BRANCH || 'main'
-                            }
+                        await gh.put(`/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/contents/${path}`, {
+                            message: `Vex Update: ${path}`, content, sha, branch: 'main'
                         });
-                        response = `🗑️ Vex AI Agent:\nNimefuta ${path} kaka.\nRender inadeploy sasa.`;
-                        await logAction('github_delete', path, { success: true }, 'success');
-                    } catch (e) {
-                        response = `❌ Imeshindwa kufuta ${path}\nError: ${e.response?.data?.message || e.message}`;
-                        await logAction('github_delete', path, action, 'failed', response);
-                    }
+                        response = `✅ Nimeandika ${path} kaka. Wait for Render deploy.`;
+                    } catch (e) { response = `❌ Write failed: ${e.message}`; }
                 }
-
-                // 3E. RENDER STATUS
                 else if (action.action === 'render_status') {
                     commandType = 'devops';
-                    await logAction('render_status', process.env.RENDER_SERVICE_ID, action);
                     try {
                         const { data } = await renderApi.get(`/services/${process.env.RENDER_SERVICE_ID}`);
-                        const svc = data;
-                        response = `🖥️ Vex AI DevOps:\nServer: ${svc.name}\nStatus: ${svc.serviceDetails?.env || 'unknown'}\nType: ${svc.type}\nUpdated: ${new Date(svc.updatedAt).toLocaleString()}\n\nRAM: Free tier 512MB. Ukiona bot inachemka, sema:.lex vex restart`;
-                    } catch (e) {
-                        response = `❌ Render API Error: ${e.response?.data?.message || e.message}\nCheck: RENDER_API_KEY au RENDER_SERVICE_ID`;
-                        await logAction('render_status', process.env.RENDER_SERVICE_ID, action, 'failed', response);
-                    }
+                        response = `🖥️ Server: ${data.name}\nStatus: ${data.serviceDetails?.env || 'Live'}`;
+                    } catch (e) { response = "❌ Render API Error."; }
                 }
-
-                // 3F. RENDER RESTART
-                else if (action.action === 'render_restart') {
-                    commandType = 'devops';
-                    await logAction('render_restart', process.env.RENDER_SERVICE_ID, action);
-                    try {
-                        await renderApi.post(`/services/${process.env.RENDER_SERVICE_ID}/deploys`);
-                        response = `♻️ Vex AI DevOps:\nNime-restart server mkuu. Subiri 30sec nirudi fresh.\nUptimeRobot ataniamsha tu.`;
-                    } catch (e) {
-                        response = `❌ Restart Failed: ${e.response?.data?.message || e.message}`;
-                        await logAction('render_restart', process.env.RENDER_SERVICE_ID, action, 'failed', response);
-                    }
-                }
-
-                // 3G. RENDER LOGS - MPYA
-                else if (action.action === 'render_logs') {
-                    commandType = 'devops';
-                    await logAction('render_logs', process.env.RENDER_SERVICE_ID, action);
-                    try {
-                        const { data } = await renderApi.get(`/services/${process.env.RENDER_SERVICE_ID}/logs?limit=20`);
-                        const logs = data.logs?.map(l => l.message).join('\n').slice(-1500) || 'No logs';
-                        response = `📋 Vex AI DevOps - Logs 20 za mwisho:\n\n${logs}`;
-                    } catch (e) {
-                        response = `❌ Sijaweza kuleta logs\nError: ${e.response?.data?.message || e.message}`;
-                        await logAction('render_logs', process.env.RENDER_SERVICE_ID, action, 'failed', response);
-                    }
-                }
-
                 else {
                     response = await callAI(prompt, systemPrompt);
                 }
-
             } else {
                 response = await callAI(prompt, systemPrompt);
             }
 
-            if (lang!== 'en' && response) {
+            // Translation logic
+            if (lang !== 'en' && response) {
                 try {
                     const res = await translate(response, { to: lang });
                     response = res.text;
                 } catch {}
             }
 
-            const { error: historyError } = await supabase.from('vc_chat_history').insert({
-                user_id: userId,
-                chat_id: m.chat,
-                user_message: prompt,
-                vex_response: response?.slice(0, 3000),
-                ai_engine_used: 'Auto',
-                command_type: commandType
-            });
-            if (historyError) console.log("History Error:", historyError.message);
+            // --- SAFE HISTORY SAVE ---
+            if (supabase) {
+                try {
+                    await supabase.from('vc_chat_history').insert({
+                        user_id: userId,
+                        chat_id: m.chat,
+                        user_message: prompt,
+                        vex_response: response?.slice(0, 3000),
+                        command_type: commandType
+                    });
+                } catch (he) {}
+            }
 
-            await m.reply(response || "❌ Vex AI imechoka. Jaribu tena.");
+            // UJUMBE WA TARIFA KAMA DB IMEKUFA (Ulitaka uijue)
+            if (supabaseStatus !== "Online" && response) {
+                response += "\n\n⚠️ *Database imekaa vibaya kaka, ila nimejibu.*";
+            }
+
+            await m.reply(response || "❌ Vex AI imekwama.");
 
         } catch (e) {
-            console.error("Vex AI Error:", e);
-            await m.reply(`❌ Vex AI Error: ${e.message}\nKama ni token, check Render ENV.`);
+            console.error("Critical Lex Error:", e);
+            await m.reply(`❌ Critical Error: ${e.message}`);
         }
     }
 };
 
-// AI Caller na 6 APIs Fallback
 async function callAI(prompt, systemPrompt) {
     const apis = [
         { name: 'Groq', url: 'https://api.groq.com/openai/v1/chat/completions', key: process.env.GROQ_API_KEY, model: 'llama-3.3-70b-versatile' },
@@ -314,7 +236,7 @@ async function callAI(prompt, systemPrompt) {
                 data = { messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }] };
             } else {
                 headers['Authorization'] = `Bearer ${api.key}`;
-                data = { model: api.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], temperature: 0.7, max_tokens: 1024 };
+                data = { model: api.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], temperature: 0.7 };
             }
             const res = await axios.post(api.url, data, { headers, timeout: 20000 });
             if (api.name === 'Gemini') return res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -326,4 +248,4 @@ async function callAI(prompt, systemPrompt) {
         }
     }
     return null;
-                }
+}
