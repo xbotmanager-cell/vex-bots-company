@@ -18,7 +18,7 @@ const { Server } = require("socket.io");
 const QRCode = require("qrcode");
 
 const { createClient } = require("@supabase/supabase-js");
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROY_KEY); // TUMIA SERVICE_ROLE
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROY_KEY); 
 
 // ================= GLOBAL =================
 global.prefix = ".";
@@ -37,10 +37,9 @@ const commands = new Map();
 const aliases = new Map();
 const observers = [];
 
-// ================= AUTO SETUP ENGINE [NEW] =================
+// ================= AUTO SETUP ENGINE =================
 async function autoSetupDatabase() {
     try {
-        // 1. Angalia kama setup imeshafanyika
         const { data: meta } = await supabase
             .from("vc_meta")
             .select("setup_done")
@@ -54,7 +53,6 @@ async function autoSetupDatabase() {
 
         console.log(`⚙️ Running first-time setup for ${global.clientId}...`);
 
-        // 2. Hakikisha tables za msingi zipo
         const baseSQL = `
             CREATE TABLE IF NOT EXISTS vex_session (
               id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -84,7 +82,6 @@ async function autoSetupDatabase() {
         `;
         await supabase.rpc('exec_sql', { sql: baseSQL });
 
-        // 3. Mark setup done
         await supabase.from("vc_meta").upsert({
             client_id: global.clientId,
             setup_done: true,
@@ -243,7 +240,7 @@ async function syncSettings() {
 
 // ================= MAIN START =================
 async function startVex() {
-    await autoSetupDatabase(); // [NEW] AUTO SETUP
+    await autoSetupDatabase(); 
     await loadSessionFromCloud();
     await syncSettings();
 
@@ -266,7 +263,6 @@ async function startVex() {
         browser: ["VEX CORE", "Chrome", "20.0.0"]
     });
 
-    // ================= PAIRING CODE SOCKET [NEW] =================
     io.on("connection", (socket) => {
         socket.on("request_pairing_code", async (phoneNumber) => {
             if (!sock.authState.creds.registered) {
@@ -280,7 +276,6 @@ async function startVex() {
         });
     });
 
-    // ================= MESSAGE HANDLING =================
     sock.ev.on("messages.upsert", async ({ messages }) => {
         const m = messages[0];
         if (!m || !m.message) return;
@@ -297,7 +292,6 @@ async function startVex() {
         m.sender = m.key.participant || m.chat;
         m.reply = (t) => sock.sendMessage(m.chat, { text: t }, { quoted: m });
 
-        // 1. RUN OBSERVERS
         for (const obs of observers) {
             try {
                 if (!obs.trigger || obs.trigger(m)) {
@@ -311,7 +305,6 @@ async function startVex() {
             } catch (e) {}
         }
 
-        // 2. ROUTER EXECUTION
         try {
             const route = await router(m, {
                 body,
@@ -338,7 +331,6 @@ async function startVex() {
         }
     });
 
-    // ================= CONNECTION =================
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
@@ -367,7 +359,7 @@ async function startVex() {
     });
 }
 
-// ================= UI SERVER - PURPLE GLASSMORPHISM [UPDATED] =================
+// ================= UI SERVER =================
 app.get("/", (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -471,8 +463,8 @@ app.get("/", (req, res) => {
         <p style="opacity: 0.7; font-size: 14px; margin-bottom: 10px;">Choose Connection Method</p>
 
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('qr')">QR CODE</button>
-            <button class="tab" onclick="switchTab('pairing')">PAIRING CODE</button>
+            <button class="tab active" id="tab-qr" onclick="switchTab('qr')">QR CODE</button>
+            <button class="tab" id="tab-pairing" onclick="switchTab('pairing')">PAIRING CODE</button>
         </div>
 
         <div id="qr-content" class="content active">
@@ -498,11 +490,12 @@ app.get("/", (req, res) => {
         const pairingCodeDiv = document.getElementById("pairing-code");
         const pairingStatus = document.getElementById("pairing-status");
 
-        function switchTab(tab) {
+        function switchTab(tabName) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
-            document.querySelector(`[onclick="switchTab('\${tab}')"]`).classList.add('active');
-            document.getElementById(`\${tab}-content`).classList.add('active');
+            
+            document.getElementById('tab-' + tabName).classList.add('active');
+            document.getElementById(tabName + '-content').classList.add('active');
         }
 
         function getPairingCode() {
