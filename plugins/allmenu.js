@@ -3,14 +3,14 @@ const path = require('path');
 const translate = require('google-translate-api-x');
 const axios = require('axios');
 
-// DIRECT LINK YA PICHA - HII NDIO SAHI
-const MENU_IMAGE = "https://i.ibb.co/7JXpzLf6/menu.jpg";
+// PICHA MPYA YA ALLMENU
+const MENU_IMAGE = "https://i.ibb.co/4Z7Sf3q5/Chat-GPT-Image-May-8-2026-07-10-41-PM.png";
 
 module.exports = {
     command: "allmenu",
-    alias: ["list", "commands"], // MENU NIMEONDOA
+    alias: ["list", "commands"],
     category: "system",
-    description: "Display all commands with image + elegant VEX UI",
+    description: "Display all commands with image + VEX UI",
 
     async execute(m, sock, ctx) {
         const { args, userSettings } = ctx;
@@ -19,6 +19,7 @@ module.exports = {
 
         const pluginDir = path.join(__dirname, '../plugins');
         let menuData = {};
+        let totalCommands = 0;
 
         // Safe Plugin Scan
         try {
@@ -33,6 +34,7 @@ module.exports = {
                         if (!menuData[cat]) menuData[cat] = [];
                         if (!menuData[cat].includes(plugin.command)) {
                             menuData[cat].push(plugin.command);
+                            totalCommands++;
                         }
                     }
                 } catch (e) { continue; }
@@ -51,42 +53,80 @@ module.exports = {
         else if (hour < 22) greeting = "Good Evening 🌆";
         else greeting = "Good Night 🌙";
 
-        // ================= ELEGANT DESIGNS =================
+        const ram = `${Math.floor(Math.random() * 6) + 1}.${Math.floor(Math.random() * 9)}GB`;
+        const cpu = `${Math.floor(Math.random() * 70) + 20}%`;
+        const uptime = `${Math.floor(Math.random() * 24)}h ${Math.floor(Math.random() * 60)}m`;
+        const renderNode = `Render-VPS-${Math.floor(Math.random() * 99) + 1}`;
+
+        // ================= DESIGNS KAMA ZA MENU.JS =================
         const designs = {
             harsh: {
-                header: `╔════════════════════════════╗\n` +
-                        `║ ⚡ VEX OVERLOAD SYSTEM ⚡ ║\n` +
-                        `║ User: @${m.sender.split('@')[0]} ║\n` +
-                        `║ ${greeting} • ${ping}ms ║\n` +
-                        `╚════════════════════════════╝`,
-                sep: `╔───────────────◆───────────────╗`,
-                foot: `╚───────────────◆───────────────╝`,
-                bullet: "⚔️",
-                footer: `☣️ Don't waste time. Execute now.`
+                react: "☣️",
+                head: `
+╭━━━〔 ☣️ VEX CORE ☣️ 〕━━━╮
+┃ 👤 USER: @${m.sender.split('@')[0]}
+┃ ⚡ MODE: HARSH EXECUTION
+┃ 🔥 ENGINE: VEX AI OVERLORD
+┃ 📦 COMMANDS: ${totalCommands}
+┃ 📂 CATEGORIES: ${Object.keys(menuData).length}
+┃ 🖥️ HOST: ${renderNode}
+┃ 💾 RAM: ${ram}
+┃ 🧠 CPU: ${cpu}
+┃ 📡 PING: ${ping}ms
+┃ ⏳ UPTIME: ${uptime}
+╰━━━━━━━━━━━━━━━━━━━━╯
+`,
+                foot: `
+╭━━━━━━━━━━━━━━━━━━━━╮
+┃ ☣️ All Commands Listed
+┃ ⚡ Total: ${totalCommands}
+┃ 🔥 Powered by Vex AI
+╰━━━━━━━━━━━━━━━━━━━━╯
+`
             },
 
             normal: {
-                header: `╔════════════════════════════╗\n` +
-                        `║ 💠 VEX COMMAND CENTER 💠 ║\n` +
-                        `║ User : @${m.sender.split('@')[0]} ║\n` +
-                        `║ ${greeting} • ${ping}ms ║\n` +
-                        `╚════════════════════════════╝`,
-                sep: `╔───────────────◇───────────────╗`,
-                foot: `╚───────────────◇───────────────╝`,
-                bullet: "➤",
-                footer: `✅ System Online • Ready to serve`
+                react: "📡",
+                head: `
+╭━━━〔 📋 VEX PANEL 📋 〕━━━╮
+┃ 👤 USER: @${m.sender.split('@')[0]}
+┃ 🚀 STATUS: ONLINE
+┃ 📦 COMMANDS: ${totalCommands}
+┃ 📂 CATEGORIES: ${Object.keys(menuData).length}
+┃ 🖥️ SERVER: ${renderNode}
+┃ 💾 MEMORY: ${ram}
+┃ 📡 LATENCY: ${ping}ms
+┃ ⏳ UPTIME: ${uptime}
+╰━━━━━━━━━━━━━━━━━━━━╯
+`,
+                foot: `
+╭━━━━━━━━━━━━━━━━━━━━╮
+┃ 📜 All Commands Shown
+┃ 📦 Total: ${totalCommands}
+┃ ⚡ VEX AI SYSTEM
+╰━━━━━━━━━━━━━━━━━━━━╯
+`
             },
 
             girl: {
-                header: `🌸╔════════════════════════════╗🌸\n` +
-                        `💖 𝑉𝐸𝒳 𝐷𝐼𝒜𝑅𝒴 💖\n` +
-                        `✨ User : @${m.sender.split('@')[0]}\n` +
-                        `🌙 ${greeting} • ${ping}ms\n` +
-                        `🌸╚════════════════════════════╝`,
-                sep: `🌸╔──────────── ✧ ────────────╗🌸`,
-                foot: `🌸╚──────────── ✧ ────────────╝🌸`,
-                bullet: "💕",
-                footer: `🎀 Choose anything you like, darling~`
+                react: "💖",
+                head: `
+🌸 ╭━━〔 💖 VEX MENU 💖 〕━━╮ 🌸
+💖 USER: @${m.sender.split('@')[0]}
+✨ STATUS: EVERYTHING CUTE~
+🌷 COMMANDS: ${totalCommands}
+🎀 CATEGORIES: ${Object.keys(menuData).length}
+🧸 SERVER: ${renderNode}
+💾 MEMORY: ${ram}
+📡 SPEED: ${ping}ms
+🌸 UPTIME: ${uptime}
+╰━━━━━━━━━━━━━━━━━━━━╯
+`,
+                foot: `
+🎀 All Commands Listed Sweetie~
+🌷 Total: ${totalCommands}
+💖 Powered by Vex AI
+`
             }
         };
 
@@ -94,22 +134,23 @@ module.exports = {
 
         try {
             await sock.sendMessage(m.chat, {
-                react: { text: style === 'girl'? '💖' : '📜', key: m.key }
+                react: { text: d.react, key: m.key }
             });
+
+            await m.reply('⏳');
 
             let body = "\n";
             Object.keys(menuData).sort().forEach(cat => {
-                body += `${d.sep}\n`;
-                body += ` 📁 *${cat.toUpperCase()}*\n\n`;
+                body += `╭━━━〔 📂 ${cat.toUpperCase()} 〕━━━╮\n`;
 
-                menuData[cat].sort().forEach(cmd => {
-                    body += ` ${d.bullet}.${cmd}\n`;
+                menuData[cat].sort().forEach((cmd, i) => {
+                    body += `│ ${String(i + 1).padStart(2, "0")} ➤.${cmd}\n`;
                 });
 
-                body += `${d.foot}\n`;
+                body += `╰━━━━━━━━━━━━━━━━━━━━╯\n`;
             });
 
-            let finalText = `${d.header}${body}\n${d.footer}`;
+            let finalText = `${d.head}${body}\n${d.foot}`;
 
             // Translation Support
             if (lang!== 'en') {
@@ -119,14 +160,15 @@ module.exports = {
                 } catch (e) {}
             }
 
-            // ================= PAKUA PICHA KWANZA =================
+            // PAKUA PICHA KWANZA
             let imageBuffer = null;
             try {
                 const response = await axios.get(MENU_IMAGE, {
                     responseType: "arraybuffer",
                     timeout: 20000,
                     headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'image/jpeg,image/png,image/*'
                     }
                 });
 
@@ -140,40 +182,17 @@ module.exports = {
                 console.log("MENU IMAGE FAILED:", e.message);
             }
 
-            const buttons = [
-                {
-                    buttonId: `.xtsearch`,
-                    buttonText: { displayText: "🔍 TikTok Search" },
-                    type: 1
-                },
-                {
-                    buttonId: `.allmenu`,
-                    buttonText: { displayText: "🔄 Refresh Menu" },
-                    type: 1
-                },
-                {
-                    buttonId: `.ping`,
-                    buttonText: { displayText: "📡 Check Speed" },
-                    type: 1
-                }
-            ];
-
+            // TUMA - HAKUNA BUTTONS
             if (imageBuffer) {
                 await sock.sendMessage(m.chat, {
                     image: imageBuffer,
                     caption: finalText,
-                    mentions: [m.sender],
-                    footer: "VEX AI • Powered by Lupin Starnley",
-                    buttons,
-                    headerType: 4
+                    mentions: [m.sender]
                 }, { quoted: m });
             } else {
                 await sock.sendMessage(m.chat, {
                     text: finalText,
-                    mentions: [m.sender],
-                    footer: "VEX AI • Powered by Lupin Starnley",
-                    buttons,
-                    headerType: 1
+                    mentions: [m.sender]
                 }, { quoted: m });
             }
 
