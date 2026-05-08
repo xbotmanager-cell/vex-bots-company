@@ -7,7 +7,7 @@ const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require("@googl
 module.exports = {
     vex: 'ai',
     cyro: 'intelligence',
-    nova: 'Consult VEX AI, the high-precision intelligence node.',
+    nova: 'Consult VEX AI, the high-precisio.',
 
     async execute(m, sock) {
         const args = m.text.trim().split(/ +/).slice(1);
