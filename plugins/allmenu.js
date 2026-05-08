@@ -1,22 +1,22 @@
-const translate = require('google-translate-api-x');
 const fs = require('fs');
 const path = require('path');
+const translate = require('google-translate-api-x');
 
 module.exports = {
     command: "allmenu",
-    alias: ["list", "commands"],
+    alias: ["list", "commands", "menu"],
     category: "system",
-    description: "Display all commands with VEX UI optimization",
+    description: "Display all commands with image + elegant VEX UI",
 
     async execute(m, sock, ctx) {
         const { args, userSettings } = ctx;
         const lang = args[0] && args[0].length === 2 ? args[0] : (userSettings?.lang || 'en');
-        const style = userSettings?.style || 'harsh';
+        const style = userSettings?.style || 'normal';
 
         const pluginDir = path.join(__dirname, '../plugins');
         let menuData = {};
 
-        // ================= SAFE SCAN =================
+        // Safe Plugin Scan
         try {
             const files = fs.readdirSync(pluginDir).filter(file => file.endsWith('.js'));
             for (const file of files) {
@@ -25,109 +25,123 @@ module.exports = {
                     if (plugin.command && plugin.category) {
                         const cat = plugin.category.toLowerCase();
                         if (!menuData[cat]) menuData[cat] = [];
-                        menuData[cat].push(plugin.command);
+                        if (!menuData[cat].includes(plugin.command)) {
+                            menuData[cat].push(plugin.command);
+                        }
                     }
-                } catch {
-                    continue;
-                }
+                } catch (e) { continue; }
             }
-        } catch {
-            return await sock.sendMessage(m.chat, { text: "⚠️ Interface Sync Error" });
+        } catch (err) {
+            return sock.sendMessage(m.chat, { text: "⚠️ Failed to load menu" });
         }
 
-        const ping = Math.abs(Date.now() - (m.messageTimestamp * 1000));
+        const ping = Math.abs(Date.now() - (m.messageTimestamp * 1000 || Date.now()));
 
-        // ================= DESIGN SYSTEM =================
+        // Time-based Greeting
+        const hour = new Date().getHours();
+        let greeting = "Good Day";
+        if (hour < 12) greeting = "Good Morning 🌅";
+        else if (hour < 17) greeting = "Good Afternoon ☀️";
+        else if (hour < 22) greeting = "Good Evening 🌆";
+        else greeting = "Good Night 🌙";
+
+        // ================= ELEGANT DESIGNS (Clean Single Lines) =================
         const designs = {
             harsh: {
-                h:
-`╭━━━〔 ⚡ 𝖁𝕰𝖃 𝕺𝖁𝕰𝕽𝕷𝕺𝕬𝕯 ⚡ 〕━━━╮
-┃ 👤 User  : @${m.sender.split('@')[0]}
-┃ 🧠 Dev   : Lupin Starnley
-┃ ⚡ Speed : ${ping}ms
-╰━━━━━━━━━━━━━━━━━━━━━━━╯`,
-
-                sep: "╭───────────────◇───────────────╮",
-                footSep: "╰───────────────◇───────────────╯",
-                bullet: "┃ ⚔️  .",
-                end:
-`╰━━━━━━━━━━━━━━━━━━━━━━━╯
-☣️ _System loaded. Don’t waste time._`,
-                react: "⚡"
+                header: `╔════════════════════════════╗\n` +
+                        `║     ⚡ VEX OVERLOAD SYSTEM ⚡     ║\n` +
+                        `║  User: @${m.sender.split('@')[0]}          ║\n` +
+                        `║  ${greeting} • ${ping}ms                ║\n` +
+                        `╚════════════════════════════╝`,
+                sep: `╔───────────────◆───────────────╗`,
+                foot: `╚───────────────◆───────────────╝`,
+                bullet: "⚔️",
+                footer: `☣️ Don't waste time. Execute now.`
             },
 
             normal: {
-                h:
-`╭━━━〔 💠 VEX COMMAND CENTER 💠 〕━━━╮
-┃ 👤 User     : @${m.sender.split('@')[0]}
-┃ 🤖 System   : Online
-┃ 📡 Latency  : ${ping}ms
-╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯`,
-
-                sep: "╭───────────────◆───────────────╮",
-                footSep: "╰───────────────◆───────────────╯",
-                bullet: "┃ ➤  .",
-                end:
-`╰━━━━━━━━━━━━━━━━━━━━━━━━━━╯
-✅ _All systems stable_`,
-                react: "📊"
+                header: `╔════════════════════════════╗\n` +
+                        `║     💠 VEX COMMAND CENTER 💠     ║\n` +
+                        `║  User : @${m.sender.split('@')[0]}         ║\n` +
+                        `║  ${greeting} • ${ping}ms                ║\n` +
+                        `╚════════════════════════════╝`,
+                sep: `╔───────────────◇───────────────╗`,
+                foot: `╚───────────────◇───────────────╝`,
+                bullet: "➤",
+                footer: `✅ System Online • Ready to serve`
             },
 
             girl: {
-                h:
-`🌸╭━━━〔 𝑉𝐸𝒳 𝑀𝐸𝒩𝒰 𝒟𝐼𝒜𝑅𝒴 〕━━━╮🌸
-💖 User   : @${m.sender.split('@')[0]}
-🎀 Mood   : Cute & Ready
-✨ Speed  : ${ping}ms
-🌸╰━━━━━━━━━━━━━━━━━━━━━━━╯`,
-
-                sep: "╭────────── ✦ ──────────╮",
-                footSep: "╰────────── ✦ ──────────╯",
-                bullet: "┃ 💕  .",
-                end:
-`🌸╰━━━━━━━━━━━━━━━━━━━━━━━╯
-🎀 _Pick anything you like, babe~_`,
-                react: "💖"
+                header: `🌸╔════════════════════════════╗🌸\n` +
+                        `💖     𝑉𝐸𝒳 𝐷𝐼𝒜𝑅𝒴     💖\n` +
+                        `✨ User : @${m.sender.split('@')[0]}\n` +
+                        `🌙 ${greeting} • ${ping}ms\n` +
+                        `🌸╚════════════════════════════╝`,
+                sep: `🌸╔──────────── ✧ ────────────╗🌸`,
+                foot: `🌸╚──────────── ✧ ────────────╝🌸`,
+                bullet: "💕",
+                footer: `🎀 Choose anything you like, darling~`
             }
         };
 
-        const current = designs[style] || designs.normal;
+        const d = designs[style] || designs.normal;
 
         try {
-            await sock.sendMessage(m.chat, {
-                react: { text: current.react, key: m.key }
+            await sock.sendMessage(m.chat, { 
+                react: { text: style === 'girl' ? '💖' : '📜', key: m.key } 
             });
 
-            let bodyText = "";
-
-            Object.keys(menuData).sort().forEach(category => {
-                bodyText += `\n${current.sep}\n`;
-                bodyText += `┃ 📂  *${category.toUpperCase()}*\n`;
-                bodyText += `┃\n`;
-
-                menuData[category].sort().forEach(cmd => {
-                    bodyText += `${current.bullet}${cmd}\n`;
+            let body = "\n";
+            Object.keys(menuData).sort().forEach(cat => {
+                body += `${d.sep}\n`;
+                body += `   📁 *${cat.toUpperCase()}*\n\n`;
+                
+                menuData[cat].sort().forEach(cmd => {
+                    body += `   ${d.bullet} .${cmd}\n`;
                 });
-
-                bodyText += `${current.footSep}\n`;
+                
+                body += `${d.foot}\n`;
             });
 
-            let finalMessage = `${current.h}\n${bodyText}\n${current.end}`;
+            let finalText = `${d.header}${body}\n${d.footer}`;
 
+            // Translation Support
             if (lang !== 'en') {
                 try {
-                    const res = await translate(finalMessage, { to: lang });
-                    finalMessage = res.text;
-                } catch {}
+                    const res = await translate(finalText, { to: lang });
+                    finalText = res.text;
+                } catch (e) {}
             }
 
+            // ================= IMAGE + MENU (From your picture) =================
             await sock.sendMessage(m.chat, {
-                text: finalMessage,
-                mentions: [m.sender]
+                image: { url: "https://ibb.co/7JXpzLf6" },   // Your picture
+                caption: finalText,
+                mentions: [m.sender],
+                footer: "VEX AI • Powered by Lupin Starnley",
+                buttons: [
+                    { 
+                        buttonId: `xtsearch`, 
+                        buttonText: { displayText: "🔍 TikTok Search" }, 
+                        type: 1 
+                    },
+                    { 
+                        buttonId: `xallmenu`, 
+                        buttonText: { displayText: "🔄 Refresh Menu" }, 
+                        type: 1 
+                    },
+                    { 
+                        buttonId: `xping`, 
+                        buttonText: { displayText: "📡 Check Speed" }, 
+                        type: 1 
+                    }
+                ],
+                headerType: 4   // Important for image + buttons
             }, { quoted: m });
 
-        } catch {
-            await sock.sendMessage(m.chat, { text: "❌ Menu Error" });
+        } catch (err) {
+            console.error(err);
+            sock.sendMessage(m.chat, { text: "❌ Failed to generate menu" });
         }
     }
 };
