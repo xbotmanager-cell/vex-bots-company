@@ -10,7 +10,7 @@ const translate = require('google-translate-api-x');
 
 module.exports = {
     command: "zip",
-    alias: ["vexzip", "watermark"],
+    alias: ["vexzip"],
     category: "tools",
     description: "Low RAM Zip: Vex AI 1080p watermark for ALL media types",
 
