@@ -124,7 +124,7 @@ async function callAI(prompt, systemPrompt = "") {
 // ====================== MAIN COMMAND ======================
 module.exports = {
     command: 'agent2',
-    alias: ['agent'],
+    alias: ['agent2'],
     category: 'ai',
     description: 'VEX Super DevOps Agent (Full Power)',
 
