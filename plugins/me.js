@@ -4,7 +4,7 @@ const path = require("path");
 
 module.exports = {
     command: "me",
-    alias: ["myinfo", "whoami", "profile"],
+    alias: ["myinfo", "whoami"],
     category: "system",
     description: "Show full user profile with all details",
 
