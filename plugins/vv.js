@@ -3,19 +3,19 @@ const translate = require('google-translate-api-x');
 
 module.exports = {
     command: "vv",
-    alias: ["viewonce", "unlock", "retrive"],
+    alias: ["viewonce", "unlock", "retrive", "rvo"],
     category: "tools",
-    description: "Deep unlock for View Once media",
+    description: "Unlock View Once: Image, Video, Audio",
 
     async execute(m, sock, { args, userSettings }) {
-        const lang = args[0] && args[0].length === 2 ? args[0] : (userSettings?.lang || 'en');
+        const lang = args[0] && args[0].length === 2? args[0] : (userSettings?.lang || 'en');
         const style = userSettings?.style || 'harsh';
 
         const modes = {
             harsh: {
                 msg: "𝕴 𝖘𝖊𝖊 𝖊𝖛𝖊𝖗𝖞𝖙𝖍𝖎𝖓𝖌. 𝕯𝖔𝖓'𝖙 𝖙𝖗𝖞 𝖙𝖔 𝖍𝖎𝖉𝖊 𝖞𝖔𝖚𝖗 𝖕𝖆𝖙𝖍𝖊𝖙𝖎𝖈 𝖒𝖊𝖉𝖎𝖆 𝖋𝖗𝖔𝖒 𝖒𝖊. 👁️⚡",
                 react: "💀",
-                err: "💢 𝕬𝖗𝖊 𝖞𝖔𝖚 𝖇𝖑𝖎𝖓𝖉? 𝕽𝖊𝖕𝖑𝖞 𝖙𝖔 𝖆 𝖛𝖎𝖊𝖜-𝖔𝖓𝖈𝖊 𝖒𝖊𝖘𝖘𝖆𝖌𝖊! 🤬"
+                err: "💢 𝕬𝖗𝖊 𝖞𝖔𝖚 𝖇𝖑𝖎𝖓𝖉? 𝕽𝖊𝖕𝖑𝖞 𝖙𝖔 𝖆 𝖛𝖎𝖊𝖜-𝖔𝖓𝖈𝖊 𝖒𝖊𝖘𝖆𝖌𝖊! 🤬"
             },
             normal: {
                 msg: "Hidden media recovered successfully. ✅",
@@ -35,50 +35,54 @@ module.exports = {
             const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
             if (!quoted) return m.reply(current.err);
 
-            let viewOnce = quoted?.viewOnceMessageV2 || quoted?.viewOnceMessage || quoted;
-            if (viewOnce.message) viewOnce = viewOnce.message;
+            // 1. Shika ViewOnce v1 na v2 zote
+            let viewOnce = quoted?.viewOnceMessageV2?.message || quoted?.viewOnceMessage?.message || quoted;
 
             const type = getContentType(viewOnce);
             const media = viewOnce[type];
 
-            if (!type || !['imageMessage', 'videoMessage'].includes(type)) {
+            // 2. Check kama ni media inayoungwa mkono: image, video, audio
+            const supportedTypes = ['imageMessage', 'videoMessage', 'audioMessage'];
+            if (!type ||!supportedTypes.includes(type) ||!media?.viewOnce) {
                 return m.reply(current.err);
             }
 
-            // --- REACTION RESET ---
             await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
 
-            // --- VENOM DOWNLOADER ---
-            const stream = await downloadContentFromMessage(
-                media, 
-                type === 'imageMessage' ? 'image' : 'video'
-            );
-            
+            // 3. Download kulingana na type
+            let mediaType = 'image';
+            if (type === 'videoMessage') mediaType = 'video';
+            if (type === 'audioMessage') mediaType = 'audio';
+
+            const stream = await downloadContentFromMessage(media, mediaType);
             let buffer = Buffer.from([]);
             for await (const chunk of stream) {
                 buffer = Buffer.concat([buffer, chunk]);
             }
 
-            // --- TRANSLATION SYSTEM ---
+            // 4. Translate caption
             let finalCaption = current.msg;
-            if (lang !== 'en') {
+            if (lang!== 'en') {
                 try {
                     const res = await translate(finalCaption, { to: lang });
                     finalCaption = res.text;
-                } catch { /* Fail silent */ }
+                } catch {}
             }
 
-            // --- FINAL DELIVERY ---
-            const options = { quoted: m, caption: finalCaption };
+            // 5. Tuma kulingana na type
+            const options = { quoted: m };
             if (type === 'imageMessage') {
-                await sock.sendMessage(m.chat, { image: buffer, ...options });
-            } else {
-                await sock.sendMessage(m.chat, { video: buffer, ...options });
+                await sock.sendMessage(m.chat, { image: buffer, caption: finalCaption,...options });
+            } else if (type === 'videoMessage') {
+                await sock.sendMessage(m.chat, { video: buffer, caption: finalCaption,...options });
+            } else if (type === 'audioMessage') {
+                await sock.sendMessage(m.chat, { audio: buffer, ptt: media.ptt || false,...options });
             }
 
         } catch (error) {
-            console.error("Venom Unlock Error:", error);
+            console.error("VV Unlock Error:", error);
             await sock.sendMessage(m.chat, { react: { text: "🚫", key: m.key } });
+            m.reply("❌ Failed to unlock. Media might be expired or corrupted.");
         }
     }
 };
