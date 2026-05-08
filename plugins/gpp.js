@@ -7,12 +7,20 @@ module.exports = {
     description: "Fetch all group members profile pictures with extended commentary",
 
     async execute(m, sock, { userSettings }) {
-        if (!m.isGroup) return m.reply("This command only works in groups, Master.");
-        
+        // FIXED: Check group kwa kutumia m.chat badala ya m.isGroup
+        const isGroup = m.chat.endsWith('@g.us');
+        if (!isGroup) return m.reply("This command only works in groups, Master.");
+
         const style = userSettings?.style?.value || 'harsh';
-        const groupMetadata = await sock.groupMetadata(m.chat);
-        const participants = groupMetadata.participants;
-        const groupName = groupMetadata.subject;
+
+        let groupMetadata, participants, groupName;
+        try {
+            groupMetadata = await sock.groupMetadata(m.chat);
+            participants = groupMetadata.participants;
+            groupName = groupMetadata.subject;
+        } catch (e) {
+            return m.reply("❌ Failed to fetch group info. Make sure bot is in group.");
+        }
 
         const modes = {
             harsh: {
@@ -90,7 +98,7 @@ module.exports = {
                 react: "💠"
             },
             girl: {
-                start: `🌸 𝒮𝒸𝒶𝓃𝓃𝒾𝓃𝑔 𝒢𝓇𝑜𝓊𝓅: ${groupName}. 𝐿𝑒𝓉'𝓈 𝓈𝑒𝑒 𝓉𝒽𝑒 𝒷𝑒𝒶𝓊𝓉𝒾𝑒𝓈! 🌸`,
+                start: `🌸 𝒮𝒸𝒶𝓃𝒾𝓃𝑔 𝒢𝓇𝑜𝓊𝓅: ${groupName}. 𝐿𝑒𝓉'𝓈 𝓈𝑒𝑒 𝓉𝒽𝑒 𝒷𝑒𝒶𝓊𝓉𝒾𝑒𝓈! 🌸`,
                 quotes: [
                     "Oh my goodness, babe! This picture is literally glowing with so much beauty and positive energy right now! ✨",
                     "You are looking like a total queen/king! I am so obsessed with the vibes you are giving off in this shot! 👑",
@@ -140,26 +148,33 @@ module.exports = {
         }
 
         let noPpList = [];
-        
+
         // Sequence processing kuzuia BAN
         for (let i = 0; i < participants.length; i++) {
             const user = participants[i].id;
             try {
                 const ppUrl = await sock.profilePictureUrl(user, 'image');
                 const randomQuote = current.quotes[Math.floor(Math.random() * current.quotes.length)];
-                
+
                 // Ujumbe mrefu kama ulivyotaka
                 let finalCap = `👤 **Target:** @${user.split('@')[0]}\n\n`;
                 finalCap += `📜 **VEX System Commentary:**\n${randomQuote}`;
 
                 // Auto-Translate maelezo kwenda English
-                const { text: translatedCap } = await translate(finalCap, { to: 'en' });
-
-                await sock.sendMessage(m.chat, { 
-                    image: { url: ppUrl }, 
-                    caption: translatedCap, 
-                    mentions: [user] 
-                });
+                try {
+                    const { text: translatedCap } = await translate(finalCap, { to: 'en' });
+                    await sock.sendMessage(m.chat, {
+                        image: { url: ppUrl },
+                        caption: translatedCap,
+                        mentions: [user]
+                    });
+                } catch {
+                    await sock.sendMessage(m.chat, {
+                        image: { url: ppUrl },
+                        caption: finalCap,
+                        mentions: [user]
+                    });
+                }
 
                 // Delay ya sekunde 3 kwa sababu meseji ni ndefu (usalama zaidi)
                 await new Promise(resolve => setTimeout(resolve, 3000));
@@ -175,9 +190,13 @@ module.exports = {
             noPpList.forEach((jid, index) => {
                 noPpMsg += `${index + 1}. @${jid.split('@')[0]}\n`;
             });
-            
-            const { text: translatedNoPp } = await translate(noPpMsg, { to: 'en' });
-            await sock.sendMessage(m.chat, { text: translatedNoPp, mentions: noPpList });
+
+            try {
+                const { text: translatedNoPp } = await translate(noPpMsg, { to: 'en' });
+                await sock.sendMessage(m.chat, { text: translatedNoPp, mentions: noPpList });
+            } catch {
+                await sock.sendMessage(m.chat, { text: noPpMsg, mentions: noPpList });
+            }
         }
     }
 };
