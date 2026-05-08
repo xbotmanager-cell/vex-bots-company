@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 module.exports = {
-    command: "tiktok",
+    command: "tsearch",
     alias: ["tt", "ttsearch"],
     category: "downloader",
     description: "Search & Download TikTok videos with scroll list. Render friendly.",
