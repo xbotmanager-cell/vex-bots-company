@@ -1,128 +1,256 @@
-module.exports = async function router(m, ctx) {
-    const {
-        body,
-        commands,
-        aliases,
-        observers,
-        cache,
-        supabase,
-        prefix
-    } = ctx;
+const os = require("os");
+const axios = require("axios");
+const translate = require("google-translate-api-x");
 
-    // ================= BASIC =================
+const MENU_IMAGE = "https://i.ibb.co/7JXpzLf6/menu.jpg";
 
-    const isText = typeof body === "string" && body.length > 0;
+module.exports = {
+    command: "alive",
+    alias: ["botalive", "systemalive", "vexalive"],
+    category: "system",
+    description: "Advanced live status checker",
 
-    // ⚡ FAST PREFIX CHECK (safe)
-    const isCommand = isText && prefix && body.startsWith(prefix);
+    async execute(m, sock, { userSettings }) {
 
-    let cmdNameRaw = "";
-    let args = [];
+        const lang = userSettings?.lang || "en";
+        const style = userSettings?.style || "normal";
 
-    if (isCommand) {
-        const sliced = body.slice(prefix.length).trim();
+        const styles = {
+            harsh: {
+                react: "☣️",
+                title: "☣️ VEX OVERLORD STATUS ☣️",
+                mode: "HARSH EXECUTION"
+            },
 
-        if (sliced) {
-            const parts = sliced.split(/\s+/);
-            cmdNameRaw = (parts.shift() || "").toLowerCase();
-            args = parts;
-        }
-    }
+            normal: {
+                react: "⚡",
+                title: "⚡ VEX AI STATUS ⚡",
+                mode: "NORMAL MODE"
+            },
 
-    // ⚡ ALIAS RESOLVE (FAST MAP SAFE)
-    const cmdName = aliases.get(cmdNameRaw) || cmdNameRaw;
+            girl: {
+                react: "💖",
+                title: "💖 VEX SWEET STATUS 💖",
+                mode: "CUTE MODE"
+            }
+        };
 
-    const messageType = getMessageType(m);
+        const ui = styles[style] || styles.normal;
 
-    // ⚡ SAFE USER SETTINGS (NO CRASH)
-    let userSettings = {};
-    try {
-        userSettings = cache?.getUser?.(m.sender) || {};
-    } catch {}
+        try {
 
-    // ⚡ CONTEXT (LIGHTWEIGHT)
-    const context = {
-        args,
-        userSettings,
-        cache,
-        supabase,
-        commands,
-        prefix
-    };
+            await sock.sendMessage(m.chat, {
+                react: {
+                    text: ui.react,
+                    key: m.key
+                }
+            });
 
-    // ================= OBSERVER MATCHING =================
+            // =========================
+            // REAL SYSTEM DATA
+            // =========================
 
-    let matchedObservers = null;
+            const totalMem = os.totalmem() / 1024 / 1024;
+            const freeMem = os.freemem() / 1024 / 1024;
+            const usedMem = totalMem - freeMem;
 
-    if (Array.isArray(observers) && observers.length > 0) {
-        matchedObservers = [];
+            const ramUsage = `${usedMem.toFixed(0)}MB / ${totalMem.toFixed(0)}MB`;
 
-        for (let i = 0; i < observers.length; i++) {
-            const obs = observers[i];
+            const cpuLoad = os.loadavg()[0].toFixed(2);
 
-            try {
-                if (typeof obs.trigger === "function") {
-                    const shouldRun = obs.trigger(m, {
-                        body,
-                        messageType,
-                        userSettings,
-                        cache
+            const platform = os.platform();
+            const hostname = os.hostname();
+            const nodeVersion = process.version;
+
+            const pingStart = Date.now();
+
+            await axios.get("https://api.github.com", {
+                timeout: 5000
+            });
+
+            const ping = Date.now() - pingStart;
+
+            // =========================
+            // RENDER ENVIRONMENT
+            // =========================
+
+            const renderService =
+                process.env.RENDER_SERVICE_NAME ||
+                process.env.RENDER_SERVICE_ID ||
+                "Unknown";
+
+            const renderRegion =
+                process.env.RENDER_REGION ||
+                "Singapore";
+
+            const renderInstance =
+                process.env.RENDER_INSTANCE_ID ||
+                "Free-Tier";
+
+            const renderHost =
+                process.env.RENDER_EXTERNAL_HOSTNAME ||
+                hostname;
+
+            // =========================
+            // EXTRA REALTIME DATA
+            // =========================
+
+            const currentTime = new Date().toLocaleString("en-US", {
+                timeZone: "Africa/Dar_es_Salaam"
+            });
+
+            const uptimeSeconds = process.uptime();
+
+            const days = Math.floor(uptimeSeconds / 86400);
+            const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+            const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+            const seconds = Math.floor(uptimeSeconds % 60);
+
+            const uptime =
+                `${days}d ${hours}h ${minutes}m ${seconds}s`;
+
+            // =========================
+            // UI DESIGN
+            // =========================
+
+            const invisible = "\u200E".repeat(400);
+
+            let caption = `
+╭━━━〔 ${ui.title} 〕━━━╮
+
+┃ 🤖 BOT: ONLINE
+┃ ⚡ MODE: ${ui.mode}
+┃ 🌐 PLATFORM: ${platform}
+┃ 🧠 CPU LOAD: ${cpuLoad}
+┃ 💾 RAM: ${ramUsage}
+┃ 📡 RESPONSE: ${ping}ms
+┃ 🔥 NODE: ${nodeVersion}
+
+┣━━━━━━━━━━━━━━━━
+
+┃ ☁️ HOST: RENDER
+┃ 🖥️ SERVICE: ${renderService}
+┃ 🌍 REGION: ${renderRegion}
+┃ 📦 INSTANCE: ${renderInstance}
+┃ 🔗 HOSTNAME: ${renderHost}
+
+┣━━━━━━━━━━━━━━━━
+
+┃ ⏳ ACTIVE: ${uptime}
+┃ 🕒 TIME: ${currentTime}
+┃ 👤 USER: @${m.sender.split("@")[0]}
+
+╰━━━━━━━━━━━━━━━━━━╯
+
+⚡ VEX AI SYSTEM ACTIVE
+🚀 REALTIME ENGINE RUNNING
+
+${invisible}
+`;
+
+            // =========================
+            // TRANSLATE
+            // =========================
+
+            if (lang !== "en") {
+                try {
+                    const translated = await translate(caption, {
+                        to: lang
                     });
 
-                    if (shouldRun) matchedObservers.push(obs);
-                } else {
-                    // fallback (keep original behavior)
-                    matchedObservers.push(obs);
-                }
-            } catch {
-                // silent (no crash)
+                    caption = translated.text;
+                } catch {}
             }
+
+            // =========================
+            // IMAGE DOWNLOAD SAFE
+            // =========================
+
+            let imageBuffer = null;
+
+            try {
+
+                const response = await axios.get(MENU_IMAGE, {
+                    responseType: "arraybuffer",
+                    timeout: 15000
+                });
+
+                imageBuffer = Buffer.from(response.data);
+
+            } catch (e) {
+                console.log("ALIVE IMAGE ERROR:", e.message);
+            }
+
+            // =========================
+            // BUTTONS
+            // =========================
+
+            const buttons = [
+                {
+                    buttonId: ".menu",
+                    buttonText: {
+                        displayText: "📂 MENU"
+                    },
+                    type: 1
+                },
+                {
+                    buttonId: ".ping",
+                    buttonText: {
+                        displayText: "📡 PING"
+                    },
+                    type: 1
+                }
+            ];
+
+            // =========================
+            // SEND MESSAGE
+            // =========================
+
+            if (imageBuffer) {
+
+                await sock.sendMessage(
+                    m.chat,
+                    {
+                        image: imageBuffer,
+                        caption,
+                        footer: "VEX AI • REALTIME STATUS",
+                        buttons,
+                        headerType: 4,
+                        mentions: [m.sender]
+                    },
+                    { quoted: m }
+                );
+
+            } else {
+
+                await sock.sendMessage(
+                    m.chat,
+                    {
+                        text: caption,
+                        footer: "VEX AI • REALTIME STATUS",
+                        buttons,
+                        headerType: 1,
+                        mentions: [m.sender]
+                    },
+                    { quoted: m }
+                );
+            }
+
+        } catch (err) {
+
+            console.log("ALIVE ERROR:", err);
+
+            try {
+
+                await sock.sendMessage(
+                    m.chat,
+                    {
+                        text: `⚠️ Alive system recovered from error:\n${err.message}`
+                    },
+                    { quoted: m }
+                );
+
+            } catch {}
         }
     }
-
-    // ================= COMMAND =================
-
-    if (isCommand && cmdName) {
-        const command = commands.get(cmdName);
-
-        if (command && typeof command.execute === "function") {
-            return {
-                type: "command",
-                command,
-                context
-            };
-        }
-
-        // ❌ unknown command → silent ignore
-        return { type: "ignore" };
-    }
-
-    // ================= OBSERVERS =================
-
-    if (matchedObservers && matchedObservers.length > 0) {
-        return {
-            type: "observer",
-            list: matchedObservers,
-            context
-        };
-    }
-
-    // ================= DEFAULT =================
-    return { type: "ignore" };
 };
-
-// ================= HELPER =================
-
-function getMessageType(m) {
-    const msg = m.message || {};
-
-    if (msg.protocolMessage) return "protocol";
-    if (msg.viewOnceMessageV2 || msg.viewOnceMessageV2Extension) return "viewOnce";
-    if (msg.imageMessage) return "image";
-    if (msg.videoMessage) return "video";
-    if (msg.audioMessage) return "audio";
-    if (msg.documentMessage) return "document";
-    if (msg.extendedTextMessage || msg.conversation) return "text";
-
-    return "unknown";
-}
