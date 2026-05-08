@@ -2,7 +2,8 @@ const os = require("os");
 const axios = require("axios");
 const translate = require("google-translate-api-x");
 
-const MENU_IMAGE = "https://i.ibb.co/7JXpzLf6/menu.jpg";
+// PICHA MPYA YA ALIVE
+const MENU_IMAGE = "https://i.ibb.co/4Z7Sf3q5/Chat-GPT-Image-May-8-2026-07-10-41-PM.png";
 
 module.exports = {
     command: "alive",
@@ -62,13 +63,21 @@ module.exports = {
             const hostname = os.hostname();
             const nodeVersion = process.version;
 
-            const pingStart = Date.now();
-
-            await axios.get("https://api.github.com", {
-                timeout: 5000
-            });
-
-            const ping = Date.now() - pingStart;
+            // PING - FIXED 403
+            let ping = "N/A";
+            try {
+                const pingStart = Date.now();
+                await axios.get("https://api.github.com", {
+                    timeout: 5000,
+                    headers: {
+                        'User-Agent': 'Vex-AI-Bot/1.0'
+                    }
+                });
+                ping = `${Date.now() - pingStart}ms`;
+            } catch (e) {
+                console.log("PING FAILED:", e.message);
+                ping = "Timeout";
+            }
 
             // =========================
             // RENDER ENVIRONMENT
@@ -123,7 +132,7 @@ module.exports = {
 ┃ 🌐 PLATFORM: ${platform}
 ┃ 🧠 CPU LOAD: ${cpuLoad}
 ┃ 💾 RAM: ${ramUsage}
-┃ 📡 RESPONSE: ${ping}ms
+┃ 📡 RESPONSE: ${ping}
 ┃ 🔥 NODE: ${nodeVersion}
 
 ┣━━━━━━━━━━━━━━━━
@@ -152,7 +161,7 @@ ${invisible}
             // TRANSLATE
             // =========================
 
-            if (lang !== "en") {
+            if (lang!== "en") {
                 try {
                     const translated = await translate(caption, {
                         to: lang
@@ -169,67 +178,46 @@ ${invisible}
             let imageBuffer = null;
 
             try {
-
                 const response = await axios.get(MENU_IMAGE, {
                     responseType: "arraybuffer",
-                    timeout: 15000
+                    timeout: 20000,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'image/jpeg,image/png,image/*'
+                    }
                 });
 
-                imageBuffer = Buffer.from(response.data);
+                const contentType = response.headers['content-type'];
+                if (contentType && contentType.startsWith('image/')) {
+                    imageBuffer = Buffer.from(response.data);
+                } else {
+                    console.log("ALIVE IMAGE ERROR: Not an image, got", contentType);
+                }
 
             } catch (e) {
                 console.log("ALIVE IMAGE ERROR:", e.message);
             }
 
             // =========================
-            // BUTTONS
-            // =========================
-
-            const buttons = [
-                {
-                    buttonId: ".menu",
-                    buttonText: {
-                        displayText: "📂 MENU"
-                    },
-                    type: 1
-                },
-                {
-                    buttonId: ".ping",
-                    buttonText: {
-                        displayText: "📡 PING"
-                    },
-                    type: 1
-                }
-            ];
-
-            // =========================
-            // SEND MESSAGE
+            // SEND MESSAGE - HAKUNA BUTTONS
             // =========================
 
             if (imageBuffer) {
-
                 await sock.sendMessage(
                     m.chat,
                     {
                         image: imageBuffer,
                         caption,
-                        footer: "VEX AI • REALTIME STATUS",
-                        buttons,
-                        headerType: 4,
                         mentions: [m.sender]
                     },
                     { quoted: m }
                 );
 
             } else {
-
                 await sock.sendMessage(
                     m.chat,
                     {
                         text: caption,
-                        footer: "VEX AI • REALTIME STATUS",
-                        buttons,
-                        headerType: 1,
                         mentions: [m.sender]
                     },
                     { quoted: m }
@@ -237,19 +225,15 @@ ${invisible}
             }
 
         } catch (err) {
-
             console.log("ALIVE ERROR:", err);
-
             try {
-
                 await sock.sendMessage(
                     m.chat,
                     {
-                        text: `⚠️ Alive system recovered from error:\n${err.message}`
+                        text: `⚠️ Alive system error. Contact dev.`
                     },
                     { quoted: m }
                 );
-
             } catch {}
         }
     }
