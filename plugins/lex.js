@@ -2,7 +2,7 @@ const axios = require('axios');
 const translate = require('google-translate-api-x');
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROY_KEY);
 
 // Helper: GitHub API
 const gh = axios.create({
@@ -62,18 +62,10 @@ module.exports = {
         if (!prompt) return m.reply(current.err);
 
         await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
-        const msg = await m.reply('⏳');
-
-        const editReply = async (text) => {
-            try {
-                await sock.sendMessage(m.chat, { text, edit: msg.key });
-            } catch {
-                await m.reply(text);
-            }
-        };
+        await m.reply('⏳');
 
         const logAction = async (type, target, details, status = 'success', error = null) => {
-            await supabase.from('vc_action_logs').insert({
+            const { error: supabaseError } = await supabase.from('vc_action_logs').insert({
                 user_id: userId,
                 action_type: type,
                 action_target: target,
@@ -81,7 +73,8 @@ module.exports = {
                 status,
                 error_message: error,
                 ram_warning: status === 'ram_warning'
-            }).catch(() => {});
+            });
+            if (supabaseError) console.log("Supabase Log Error:", supabaseError.message);
         };
 
         const systemPrompt = `You are Vex AI, a Super Agent WhatsApp bot created by Lupin Starnley.
@@ -119,7 +112,7 @@ AVAILABLE ACTIONS: read_file, write_file, delete_file, list_plugins, render_stat
                 }
 
                 if (action.warning) {
-                    await editReply(`⚠️ RAM Warning: ${action.warning}`);
+                    await m.reply(`⚠️ RAM Warning: ${action.warning}`);
                     await logAction('agent_warning', action.target, action, 'ram_warning');
                     return;
                 }
@@ -131,13 +124,14 @@ AVAILABLE ACTIONS: read_file, write_file, delete_file, list_plugins, render_stat
                         const { data } = await gh.get(`/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/contents/${process.env.GITHUB_PLUGINS_PATH}`);
                         const pluginNames = data.filter(f => f.name.endsWith('.js')).map(f => f.name.replace('.js', ''));
 
-                        await supabase.from('vc_plugin_cache').upsert(
+                        const { error } = await supabase.from('vc_plugin_cache').upsert(
                             pluginNames.map(n => ({
                                 plugin_name: n,
                                 plugin_path: `${process.env.GITHUB_PLUGINS_PATH}/${n}.js`
                             })),
                             { onConflict: 'plugin_name' }
                         );
+                        if (error) console.log("Cache Error:", error.message);
 
                         response = `🧠 Vex AI Agent:\nNimepata plugins ${pluginNames.length} kaka:\n\n${pluginNames.map(p => `• ${p}`).join('\n')}\n\nTaja 1 unayoitaka nisome:.lex vex soma zip`;
                     } catch (e) {
@@ -149,7 +143,7 @@ AVAILABLE ACTIONS: read_file, write_file, delete_file, list_plugins, render_stat
                 // 3B. READ FILE
                 else if (action.action === 'read_file') {
                     let path = action.target;
-                    if (!path) return editReply("❌ Sema file gani kaka. Mfano:.lex vex soma plugins/zip.js");
+                    if (!path) return m.reply("❌ Sema file gani kaka. Mfano:.lex vex soma plugins/zip.js");
                     if (!path.includes('/')) path = `${process.env.GITHUB_PLUGINS_PATH}/${path}.js`;
 
                     await logAction('github_read', path, action);
@@ -173,7 +167,7 @@ AVAILABLE ACTIONS: read_file, write_file, delete_file, list_plugins, render_stat
                     const code = extractCode(prompt);
                     let path = action.target;
                     if (!path ||!code) {
-                        return editReply("❌ Format sahihi:.lex vex andika plugins/say.js code: module.exports = {command: 'say'}");
+                        return m.reply("❌ Format sahihi:.lex vex andika plugins/say.js code: module.exports = {command: 'say'}");
                     }
                     if (!path.includes('/')) path = `${process.env.GITHUB_PLUGINS_PATH}/${path}.js`;
 
@@ -200,13 +194,13 @@ AVAILABLE ACTIONS: read_file, write_file, delete_file, list_plugins, render_stat
                 // 3D. DELETE FILE - MPYA
                 else if (action.action === 'delete_file') {
                     let path = action.target;
-                    if (!path) return editReply("❌ Sema file gani ufute. Mfano:.lex vex futa plugins/test.js");
+                    if (!path) return m.reply("❌ Sema file gani ufute. Mfano:.lex vex futa plugins/test.js");
                     if (!path.includes('/')) path = `${process.env.GITHUB_PLUGINS_PATH}/${path}.js`;
 
                     await logAction('github_delete', path, action);
                     try {
                         const sha = await getFileSha(path);
-                        if (!sha) return editReply(`❌ File ${path} haipo kaka.`);
+                        if (!sha) return m.reply(`❌ File ${path} haipo kaka.`);
 
                         await gh.delete(`/repos/${process.env.GITHUB_OWNER}/${process.env.GITHUB_REPO}/contents/${path}`, {
                             data: {
@@ -279,20 +273,21 @@ AVAILABLE ACTIONS: read_file, write_file, delete_file, list_plugins, render_stat
                 } catch {}
             }
 
-            await supabase.from('vc_chat_history').insert({
+            const { error: historyError } = await supabase.from('vc_chat_history').insert({
                 user_id: userId,
                 chat_id: m.chat,
                 user_message: prompt,
                 vex_response: response?.slice(0, 3000),
                 ai_engine_used: 'Auto',
                 command_type: commandType
-            }).catch(() => {});
+            });
+            if (historyError) console.log("History Error:", historyError.message);
 
-            await editReply(response || "❌ Vex AI imechoka. Jaribu tena.");
+            await m.reply(response || "❌ Vex AI imechoka. Jaribu tena.");
 
         } catch (e) {
             console.error("Vex AI Error:", e);
-            await editReply(`❌ Vex AI Error: ${e.message}\nKama ni token, check Render ENV.`);
+            await m.reply(`❌ Vex AI Error: ${e.message}\nKama ni token, check Render ENV.`);
         }
     }
 };
