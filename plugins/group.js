@@ -75,7 +75,7 @@ module.exports = {
                     listText += ` └ ID: ${groupId}\n\n`;
                     count++;
 
-                    if (count > 50) { // Limit ili isizidi herufi 4000
+                    if (count > 50) {
                         listText += `...na ${groupIds.length - 50} zingine\n\n`;
                         break;
                     }
@@ -133,7 +133,7 @@ module.exports = {
             }
 
             // =========================
-            // 4. MASS ADD - ANTI BAN SEQUENCE
+            // 4. MASS ADD - ANTI BAN SEQUENCE FIXED
             // =========================
             const addMsg = await m.reply(ui.adding);
 
@@ -141,6 +141,7 @@ module.exports = {
             let failed = [];
             let requested = [];
             let alreadyMember = [];
+            let rateLimited = 0;
 
             for (let i = 0; i < groupIds.length; i++) {
                 const groupId = groupIds[i];
@@ -158,59 +159,73 @@ module.exports = {
                     const res = await sock.groupParticipantsUpdate(groupId, [targetUser], "add");
 
                     if (res[0]?.status === 200) {
-                        success.push(metadata.subject);
+                        success.push(metadata.subject); // 200 = SUCCESS FIXED
                     } else if (res[0]?.status === 409) {
-                        alreadyMember.push(metadata.subject);
-                    } else if (res[0]?.status === 403) {
-                        failed.push(`${metadata.subject} - Admin only`);
+                        alreadyMember.push(metadata.subject); // 409 = TAYARI YUMO FIXED
                     } else if (res[0]?.status === 408) {
-                        requested.push(metadata.subject);
+                        requested.push(metadata.subject); // 408 = REQUEST SENT
+                    } else if (res[0]?.status === 421) {
+                        failed.push(`${metadata.subject} - Rate Limited`);
+                        rateLimited++;
+                        await new Promise(r => setTimeout(r, 10000)); // Subiri 10s
+                    } else if (res[0]?.status === 403) {
+                        failed.push(`${metadata.subject} - Bot not admin`);
                     } else {
                         failed.push(`${metadata.subject} - Error ${res[0]?.status}`);
                     }
 
                 } catch (e) {
-                    if (e.message.includes('admin')) {
+                    const errMsg = e.message || '';
+                    if (errMsg.includes('admin') || errMsg.includes('403')) {
                         failed.push(`${metadata.subject} - Bot not admin`);
-                    } else if (e.message.includes('request')) {
+                    } else if (errMsg.includes('request') || errMsg.includes('408')) {
                         requested.push(metadata.subject);
+                    } else if (errMsg.includes('409')) {
+                        alreadyMember.push(metadata.subject); // 409 catch
+                    } else if (errMsg.includes('421')) {
+                        failed.push(`${metadata.subject} - Rate Limited`);
+                        rateLimited++;
+                        await new Promise(r => setTimeout(r, 10000));
                     } else {
-                        failed.push(`${metadata.subject} - ${e.message.slice(0, 30)}`);
+                        failed.push(`${metadata.subject} - ${errMsg.slice(0, 30)}`);
                     }
                 }
 
-                // ANTI-BAN DELAY: 3.5s kati ya kila group
+                // ANTI-BAN DELAY: 5 SEKUNDE - FIXED
                 if (i < groupIds.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 3500));
+                    await new Promise(resolve => setTimeout(resolve, 5000));
                 }
 
                 // Update progress kila groups 5
-                if ((i + 1) % 5 === 0) {
+                if ((i + 1) % 5 === 0 || i === groupIds.length - 1) {
                     try {
                         await sock.sendMessage(m.chat, {
                             edit: addMsg.key,
-                            text: `${ui.adding}\n\nProgress: ${i + 1}/${groupIds.length}\nSuccess: ${success.length}\nFailed: ${failed.length}`
+                            text: `${ui.adding}\n\nProgress: ${i + 1}/${groupIds.length}\n✅ Success: ${success.length}\n📩 Requested: ${requested.length}\n👥 Already: ${alreadyMember.length}\n❌ Failed: ${failed.length}${rateLimited > 0? `\n⚠️ Rate Limited: ${rateLimited}` : ''}`
                         });
                     } catch {}
                 }
             }
 
             // =========================
-            // 5. RIPOTI YA MWISHO
+            // 5. RIPOTI YA MWISHO FIXED
             // =========================
             let report = `╭━━━〔 ${ui.title} 〕━━━╮\n\n`;
             report += `┃ 👤 USER: @${targetUser.split('@')[0]}\n`;
             report += `┃ 📊 TOTAL GROUPS: ${groupIds.length}\n┣━━━━━━━━━━━━━━━━\n\n`;
             report += `✅ *SUCCESS*: ${success.length}\n`;
-            if (success.length > 0) report += success.slice(0, 10).map(g => ` └ ${g}`).join('\n') + '\n\n';
+            if (success.length > 0) report += success.slice(0, 15).map(g => ` └ ${g}`).join('\n') + (success.length > 15? `\n └...na ${success.length - 15} zingine` : '') + '\n\n';
 
             report += `📩 *REQUESTED*: ${requested.length}\n`;
-            if (requested.length > 0) report += requested.slice(0, 10).map(g => ` └ ${g}`).join('\n') + '\n\n';
-
-            report += `⚠️ *FAILED*: ${failed.length}\n`;
-            if (failed.length > 0) report += failed.slice(0, 10).map(g => ` └ ${g}`).join('\n') + '\n\n';
+            if (requested.length > 0) report += requested.slice(0, 15).map(g => ` └ ${g}`).join('\n') + (requested.length > 15? `\n └...na ${requested.length - 15} zingine` : '') + '\n\n';
 
             report += `👥 *ALREADY MEMBER*: ${alreadyMember.length}\n`;
+            if (alreadyMember.length > 0 && alreadyMember.length <= 10) report += alreadyMember.map(g => ` └ ${g}`).join('\n') + '\n\n';
+            else if (alreadyMember.length > 10) report += ` └...${alreadyMember.length} groups\n\n`;
+
+            report += `❌ *FAILED*: ${failed.length}\n`;
+            if (failed.length > 0) report += failed.slice(0, 15).map(g => ` └ ${g}`).join('\n') + (failed.length > 15? `\n └...na ${failed.length - 15} zingine` : '') + '\n\n';
+
             report += `╰━━━━━━━━━━━━━━━━━━╯\n\n⚡ VEX AI SYSTEM`;
 
             // Tuma ripoti kwa group
@@ -223,13 +238,25 @@ module.exports = {
             // Tuma DM kama kuna request/failed
             if (requested.length > 0 || failed.length > 0) {
                 let dmReport = `⚛️ *VEX AI GROUP ADD REPORT*\n\n`;
-                dmReport += `User: @${targetUser.split('@')[0]}\n\n`;
+                dmReport += `User: @${targetUser.split('@')[0]}\n`;
+                dmReport += `Total Groups: ${groupIds.length}\n\n`;
+
+                if (success.length > 0) {
+                    dmReport += `✅ *SUCCESS ${success.length}:*\n`;
+                    dmReport += success.map(g => `• ${g}`).join('\n') + '\n\n';
+                }
+
                 if (requested.length > 0) {
-                    dmReport += `📩 *Groups Zilizohitaji Request:*\n`;
+                    dmReport += `📩 *REQUESTED ${requested.length}:*\n`;
                     dmReport += requested.map(g => `• ${g}`).join('\n') + '\n\n';
                 }
+
+                if (alreadyMember.length > 0) {
+                    dmReport += `👥 *ALREADY MEMBER ${alreadyMember.length}*\n\n`;
+                }
+
                 if (failed.length > 0) {
-                    dmReport += `❌ *Groups Zilizofail:*\n`;
+                    dmReport += `❌ *FAILED ${failed.length}:*\n`;
                     dmReport += failed.map(g => `• ${g}`).join('\n');
                 }
 
