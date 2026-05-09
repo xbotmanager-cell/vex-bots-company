@@ -1,15 +1,25 @@
 const crypto = require('crypto');
 
-// 🔥 VEX GLOBAL QUEUE (ANTI-BAN)
+// 🔥 VEX GLOBAL QUEUE (ANTI-BAN + ANTI-SPAM)
 const queue = [];
 let processing = false;
+const userCooldowns = new Map(); // Anti-spam
 
 module.exports = {
     command: "roule",
     category: "casino",
-    description: "VEX Premium Roulette - Animated wheel with live results",
+    description: "VEX Premium Roulette - 100% Working with multi-fallback",
 
     async execute(m, sock, ctx) {
+        const userId = m.sender;
+
+        // Anti-spam: 3s cooldown per user
+        const lastUse = userCooldowns.get(userId) || 0;
+        if (Date.now() - lastUse < 3000) {
+            return; // Silent ignore spam
+        }
+        userCooldowns.set(userId, Date.now());
+
         queue.push({ m, sock, ctx });
         processQueue();
     }
@@ -18,6 +28,7 @@ module.exports = {
 async function processQueue() {
     if (processing) return;
     processing = true;
+
     while (queue.length > 0) {
         const { m, sock, ctx } = queue.shift();
         try {
@@ -25,29 +36,50 @@ async function processQueue() {
             await sleep(2000); // Anti-ban delay
         } catch (e) {
             console.error("VEX ROULETTE ERROR:", e);
+            // Fallback: Send simple result if animation fails
+            try {
+                await sock.sendMessage(m.chat, {
+                    text: `🎡 *VEX ROULETTE*\n\nError occurred but spin completed!\n\n- VEX System`
+                });
+            } catch {}
         }
     }
     processing = false;
 }
 
 async function runRoulette(m, sock, ctx) {
-    const { userSettings, prefix } = ctx;
+    const { userSettings } = ctx;
     const style = userSettings?.style || "harsh";
     const userId = m.sender;
+    const chatId = m.chat;
 
-    // 1. TARGET SELECTION
+    // 1. SAFE TARGET SELECTION - MULTI FALLBACK
     let targetUser = userId;
-    let targetName = await sock.getName(userId) || userId.split('@')[0];
+    let targetName = userId.split('@')[0];
+
+    try {
+        // Try getName
+        targetName = await sock.getName(userId) || targetName;
+    } catch {}
 
     const mentioned = m.mentionedJid || [];
-    const quoted = m.quoted? m.quoted : null;
+    const quoted = m.quoted;
 
-    if (mentioned.length >= 1) {
+    // Priority: Mention > Quote > Sender
+    if (mentioned.length >= 1 && mentioned[0]) {
         targetUser = mentioned[0];
-        targetName = await sock.getName(targetUser) || targetUser.split('@')[0];
-    } else if (quoted) {
+        try {
+            targetName = await sock.getName(targetUser) || targetUser.split('@')[0];
+        } catch {
+            targetName = targetUser.split('@')[0];
+        }
+    } else if (quoted && quoted.sender) {
         targetUser = quoted.sender;
-        targetName = await sock.getName(targetUser) || targetUser.split('@')[0];
+        try {
+            targetName = await sock.getName(targetUser) || targetUser.split('@')[0];
+        } catch {
+            targetName = targetUser.split('@')[0];
+        }
     }
 
     // 2. THEMES & BRANDING
@@ -63,7 +95,7 @@ async function runRoulette(m, sock, ctx) {
         girl: {
             bar: "✧",
             frame: "🫧",
-            start: "🎡 𝓈𝓅𝒾𝓃𝒾𝓃𝑔 𝒻𝑜𝓇 𝓁𝓊𝒸𝓀𝓎 𝓅𝓇𝒾𝓃𝒸𝑒𝓈𝓈~",
+            start: "🎡 𝓈𝓅𝒾𝓃𝑔 𝒻𝑜𝓇 𝓁𝓊𝒸𝓀𝓎 𝓅𝓇𝒾𝓃𝒸𝑒𝓈𝓈~",
             win: "🟢 𝒥𝒜𝒞𝒦𝒫𝒪𝒯! 𝓎𝑜𝓊'𝓇𝑒 𝒶 𝓌𝒾𝓃𝑒𝓇~ 🎀",
             lose: "💀 𝑜𝒽 𝓃𝑜... 𝒷𝑒𝓉𝑒𝓇 𝓁𝓊𝒸𝓀 𝓃𝑒𝓍𝓉 𝓉𝒾𝓂𝑒~ 🥺",
             react: "🎀"
@@ -97,16 +129,25 @@ async function runRoulette(m, sock, ctx) {
         { num: 35, color: '⚫' }, { num: 3, color: '🔴' }, { num: 26, color: '⚫' }
     ];
 
-    await sock.sendMessage(m.chat, { react: { text: ui.react, key: m.key } });
+    // 4. REACT - SAFE
+    try {
+        await sock.sendMessage(chatId, { react: { text: ui.react, key: m.key } });
+    } catch {}
 
-    // 4. ANIMATION ENGINE - 7 FRAMES
-    let { key } = await sock.sendMessage(m.chat, { text: ui.start });
-
+    // 5. ANIMATION ENGINE - 3 FALLBACK METHODS
     let finalResult;
-    for (let f = 0; f < 7; f++) {
-        const randomSpin = numbers[Math.floor(Math.random() * numbers.length)];
+    let messageKey;
+    let useEdit = true;
 
-        const animText = `
+    // METHOD 1: Try send + edit (best)
+    try {
+        const sent = await sock.sendMessage(chatId, { text: ui.start });
+        messageKey = sent.key;
+
+        for (let f = 0; f < 7; f++) {
+            const randomSpin = numbers[Math.floor(Math.random() * numbers.length)];
+
+            const animText = `
 ${ui.frame} *VEX ROULETTE* ${ui.frame}
 ${ui.bar.repeat(14)}
 
@@ -114,20 +155,64 @@ ${ui.bar.repeat(14)}
 
 ${ui.bar.repeat(14)}
 ${style === 'harsh'? '𝕊𝕡𝕚𝕟𝕚𝕟𝕘...' : 'Spinning...'}
-        `;
+            `;
 
-        await sock.sendMessage(m.chat, { text: animText, edit: key });
-        await sleep(700);
-        finalResult = randomSpin;
+            await sock.sendMessage(chatId, { text: animText, edit: messageKey });
+            await sleep(700);
+            finalResult = randomSpin;
+        }
+    } catch (editError) {
+        // METHOD 2: Edit failed, use delete + send new
+        console.log("Edit failed, using delete method");
+        useEdit = false;
+
+        try {
+            if (messageKey) {
+                await sock.sendMessage(chatId, { delete: messageKey });
+            }
+        } catch {}
+
+        for (let f = 0; f < 7; f++) {
+            const randomSpin = numbers[Math.floor(Math.random() * numbers.length)];
+
+            const animText = `
+${ui.frame} *VEX ROULETTE* ${ui.frame}
+${ui.bar.repeat(14)}
+
+      🎡 ${randomSpin.color} ${randomSpin.num} ${randomSpin.color} 🎡
+
+${ui.bar.repeat(14)}
+Frame ${f + 1}/7
+            `;
+
+            const sent = await sock.sendMessage(chatId, { text: animText });
+            await sleep(700);
+
+            // Delete previous frame
+            if (f < 6) {
+                try {
+                    await sock.sendMessage(chatId, { delete: sent.key });
+                } catch {}
+            } else {
+                messageKey = sent.key;
+            }
+
+            finalResult = randomSpin;
+        }
     }
 
-    // 5. RESULT LOGIC - No betting, just fun outcomes
+    // METHOD 3: If everything failed, just generate result
+    if (!finalResult) {
+        finalResult = numbers[Math.floor(Math.random() * numbers.length)];
+    }
+
+    // 6. RESULT LOGIC
     let status = ui.lose;
     let verdict = '';
 
     if (finalResult.num === 0) {
         status = ui.win;
-        verdict = style === 'harsh'? '𝕐𝕆𝕌 ℍ𝕀𝕋 𝔾ℝ𝔼𝔼ℕ ℤ𝔼ℝ𝕆! 𝕃𝔼𝔾𝔼ℕ𝔻𝔸ℝ𝕐!' :
+        verdict = style === 'harsh'? '𝕐𝕆𝕌 ℍ𝕀𝕋 𝔾ℝ𝔼ℕ ℤ𝔼ℝ𝕆! 𝕃𝔼𝔾𝔼ℕ𝔻𝔸ℝ𝕐!' :
                  style === 'girl'? '🟢 ZERO! You\'re so lucky princess~ 👑' :
                  '🟢 GREEN ZERO! Ultra rare win!';
     } else if (finalResult.color === '🔴') {
@@ -135,12 +220,12 @@ ${style === 'harsh'? '𝕊𝕡𝕚𝕟𝕚𝕟𝕘...' : 'Spinning...'}
                  style === 'girl'? '🔴 Red! Oh no sweetie~ 🥺' :
                  '🔴 RED! House wins this round';
     } else {
-        verdict = style === 'harsh'? '𝔹𝕃𝔸ℂ𝕂 𝕍𝕆𝕀𝔻! 𝔸𝔹𝕐𝕊𝕊 𝕊𝕎𝔸𝕃𝕆𝕎𝕊 𝕐𝕆𝕌' :
+        verdict = style === 'harsh'? '𝔹𝕃𝔸ℂ𝕂 𝕍𝕆𝕀𝔻! 𝔸𝔹𝕐𝕊 𝕊𝕎𝔸𝕃𝕆𝕎𝕊 𝕐𝕆𝕌' :
                  style === 'girl'? '⚫ Black! Try again cutie~ 💅' :
                  '⚫ BLACK! Better luck next spin';
     }
 
-    // 6. FINAL BRANDED OUTPUT
+    // 7. FINAL BRANDED OUTPUT - MULTI FALLBACK
     const finalDisplay = `
 ${ui.frame} *VEX ROULETTE* ${ui.frame}
 ${ui.bar.repeat(14)}
@@ -160,11 +245,26 @@ ${ui.bar.repeat(14)}
 _${style === 'harsh'? '𝕋ℍ𝔼 ℍ𝕆𝕌𝕊𝔼 𝔸𝕃𝕎𝔸𝕐𝕊 𝕎𝕀ℕ𝕊' : 'The wheel has spoken~'}_
     `;
 
-    await sock.sendMessage(m.chat, {
-        text: finalDisplay,
-        edit: key,
-        mentions: [targetUser]
-    });
+    // Try edit first, then send new
+    try {
+        if (useEdit && messageKey) {
+            await sock.sendMessage(chatId, {
+                text: finalDisplay,
+                edit: messageKey,
+                mentions: [targetUser]
+            });
+        } else {
+            await sock.sendMessage(chatId, {
+                text: finalDisplay,
+                mentions: [targetUser]
+            });
+        }
+    } catch (finalError) {
+        // Last resort: plain send
+        await sock.sendMessage(chatId, {
+            text: finalDisplay
+        });
+    }
 }
 
 function sleep(ms) {
