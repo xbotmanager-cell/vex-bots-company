@@ -19,7 +19,7 @@ const ENV = {
     CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
     GITHUB_OWNER: process.env.GITHUB_OWNER,
-    GITHUB_REPO: process.env.GITHUB_REPO,
+    GITHUB_REPO: process.env.GITHUB_REPO2,
     GITHUB_BRANCH: process.env.GITHUB_BRANCH || 'main',
     BOT_NAME: process.env.BOT_NAME || 'VEX AI'
 };
