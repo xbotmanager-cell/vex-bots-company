@@ -78,7 +78,7 @@ module.exports = {
             try {
                 pfpUrl = await sock.profilePictureUrl(targetUser, 'image');
             } catch {
-                pfpUrl = 'https://i.ibb.co/4Z1nLk5C/no-dp.png'; // Default avatar
+                pfpUrl = 'https://i.ibb.co/4Z7Sf3q5/Chat-GPT-Image-May-8-2026-07-10-41-PM.png'; // Default avatar
             }
 
             // 4. Download and process image
