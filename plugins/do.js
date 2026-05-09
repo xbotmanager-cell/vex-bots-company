@@ -578,27 +578,128 @@ async function translateIfNeeded(text, lang) {
     if (lang === 'en') return text;
     try {
         const res = await axios.post('https://libretranslate.com/translate', {
-            q: text,
-            source: 'en',
-            target: lang,
-            format: 'text'
-        }, { timeout: 3000 });
-        return res.data.translatedText;
-    } catch {
-        return text;
+// =========================
+// BRAND NEW: MATRIX - FIXED
+// =========================
+async function handleMatrix(m, sock, query, ui, lang) {
+    try {
+        const result = math.evaluate(query);
+        const resultStr = math.format(result, { precision: 4 });
+
+        let response = `${ui.prefix} *MATRIX*\n\n`;
+        response += `Input: \`${query}\`\n`;
+        response += `Result:\n\`\`\`\n${resultStr}\n\`\`\``;
+
+        if (math.isMatrix(result)) {
+            const size = math.size(result);
+            response += `\nSize: ${size.join('x')}`;
+            try {
+                const det = math.det(result);
+                response += `\nDeterminant: ${math.format(det, { precision: 4 })}`;
+            } catch { }
+        }
+
+        await sock.sendMessage(m.chat, { text: response }, { quoted: m });
+
+    } catch (e) {
+        const aiPrompt = `You are VEX AI Linear Algebra Expert. Solve: "${query}". Explain matrix operations step by step. Language: ${lang}`;
+        const aiResult = await callAI(aiPrompt, 800);
+        await sock.sendMessage(m.chat, { text: `${ui.prefix} *VEX AI*\n\n${aiResult}` }, { quoted: m });
     }
 }
 
 // =========================
-// AI FALLBACK CHAIN - ALL 6
+// BRAND NEW: STATISTICS - FIXED
 // =========================
-async function callAI(prompt) {
+async function handleStatistics(m, sock, query, ui, lang) {
+    try {
+        const dataMatch = query.match(/\[(.*?)\]/);
+        if (!dataMatch) throw 'Format: mean [1,2,3,4,5] or std [1,2,3]';
+
+        const data = JSON.parse(`[${dataMatch[1]}]`);
+        if (!Array.isArray(data) || data.length === 0) throw 'Invalid data array';
+
+        const cmd = query.toLowerCase();
+
+        let result, op;
+        if (cmd.includes('mean')) {
+            result = math.mean(data);
+            op = 'Mean';
+        } else if (cmd.includes('median')) {
+            result = math.median(data);
+            op = 'Median';
+        } else if (cmd.includes('std') || cmd.includes('deviation')) {
+            result = math.std(data);
+            op = 'Standard Deviation';
+        } else if (cmd.includes('var')) {
+            result = math.variance(data);
+            op = 'Variance';
+        } else if (cmd.includes('sum')) {
+            result = math.sum(data);
+            op = 'Sum';
+        } else if (cmd.includes('mode')) {
+            result = math.mode(data);
+            op = 'Mode';
+        } else {
+            result = math.mean(data);
+            op = 'Mean';
+        }
+
+        let response = `${ui.prefix} *STATISTICS*\n\n`;
+        response += `Data: [${data.slice(0, 10).join(', ')}${data.length > 10? '...' : ''}]\n`;
+        response += `Count: ${data.length}\n`;
+        response += `${op}: ${math.format(result, { precision: 6 })}\n`;
+        response += `Min: ${math.min(data)}, Max: ${math.max(data)}`;
+
+        await sock.sendMessage(m.chat, { text: response }, { quoted: m });
+
+    } catch (e) {
+        const aiPrompt = `You are VEX AI Statistics Expert. Solve: "${query}". Explain statistical concepts. Language: ${lang}`;
+        const aiResult = await callAI(aiPrompt, 800);
+        await sock.sendMessage(m.chat, { text: `${ui.prefix} *VEX AI*\n\n${aiResult}` }, { quoted: m });
+    }
+}
+
+// =========================
+// HELPER FUNCTIONS
+// =========================
+function isPhysicsQuery(q) {
+    const physicsKeywords = ['force', 'energy', 'velocity', 'acceleration', 'mass', 'weight', 'pressure', 'power', 'work', 'momentum', 'f=', 'e=', 'v=', 'a=', 'p=', 'w=', 'kg', 'm/s', 'newton', 'joule', 'watt', 'pascal', 'coulomb', 'volt', 'ohm', 'farad', 'henry', 'tesla', 'frequency', 'wavelength', 'density'];
+    return physicsKeywords.some(k => q.toLowerCase().includes(k));
+}
+
+function detectLanguage(m, text = '') {
+    const content = text || m.body || m.message?.conversation || '';
+    if (/[\u0B80-\u0BFF]/.test(content)) return 'ta'; // Tamil
+    if (/[\u0C00-\u0C7F]/.test(content)) return 'te'; // Telugu
+    if (/[\u0900-\u097F]/.test(content)) return 'hi'; // Hindi
+    if (/[ء-ي]/.test(content)) return 'ar';
+    if (/[àáâãäåæçèéêëìíîïñòóôõöùúûüý]/.test(content)) return 'es';
+    if (/[äöüß]/.test(content)) return 'de';
+    if (/[àâçéèêëîïôûùüÿ]/.test(content)) return 'fr';
+    if (/[а-яА-Я]/.test(content)) return 'ru';
+    if (/[你我他]/.test(content)) return 'zh';
+    if (/[あ-ん]/.test(content)) return 'ja';
+    if (/[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(content)) return 'ko';
+    if (/\b(ya|na|wa|za|ni|kwa|hii|hiyo|vipi|gani|nini|jibu|hesabu|grafu)\b/i.test(content)) return 'sw';
+    return 'en';
+}
+
+// REMOVED LibreTranslate - it fails 90% of time
+async function translateIfNeeded(text, lang) {
+    return text; // Just return English for now - more reliable
+}
+
+// =========================
+// AI FALLBACK CHAIN - FIXED FOR FREE TIER
+// =========================
+async function callAI(prompt, maxTokens = 800) {
     const models = [
         { name: 'GROQ', fn: callGroq },
-        { name: 'CEREBRAS', fn: callCerebras },
-        { name: 'SAMBANOVA', fn: callSambaNova },
         { name: 'GEMINI', fn: callGemini },
         { name: 'OPENROUTER', fn: callOpenRouter },
+        { name: 'CEREBRAS', fn: callCerebras },
+        { name: 'SAMBANOVA', fn: callSambaNova },
         { name: 'CLOUDFLARE', fn: callCloudflare }
     ];
 
@@ -606,11 +707,11 @@ async function callAI(prompt) {
         try {
             if (aiCallCount[model.name] >= 200) continue;
             const result = await Promise.race([
-                model.fn(prompt),
-                new Promise((_, rej) => setTimeout(() => rej('Timeout'), 4000))
+                model.fn(prompt, maxTokens),
+                new Promise((_, rej) => setTimeout(() => rej('Timeout'), 8000))
             ]);
             aiCallCount[model.name] = (aiCallCount[model.name] || 0) + 1;
-            return result;
+            if (result && result.length > 10) return result;
         } catch (e) {
             continue;
         }
@@ -618,61 +719,64 @@ async function callAI(prompt) {
     return "VEX AI is temporarily offline. Try simpler equation or check API keys.";
 }
 
-async function callGroq(prompt) {
+// FIXED: 8B models for free tier
+async function callGroq(prompt, maxTokens) {
     if (!ENV.GROQ_API_KEY) throw 'No key';
     const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-        model: 'llama-3.1-70b-versatile',
+        model: 'llama-3.1-8b-instant',
         messages: [{ role: 'system', content: 'You are VEX AI, expert mathematician and physicist. Always show steps.' }, { role: 'user', content: prompt }],
-        max_tokens: 800,
+        max_tokens: maxTokens,
         temperature: 0.2
-    }, { headers: { 'Authorization': `Bearer ${ENV.GROQ_API_KEY}` }, timeout: 5000 });
+    }, { headers: { 'Authorization': `Bearer ${ENV.GROQ_API_KEY}` }, timeout: 10000 });
     return res.data.choices[0].message.content.trim();
 }
 
-async function callCerebras(prompt) {
+async function callCerebras(prompt, maxTokens) {
     if (!ENV.CEREBRAS_API_KEY) throw 'No key';
     const res = await axios.post('https://api.cerebras.ai/v1/chat/completions', {
-        model: 'llama3.1-70b',
+        model: 'llama3.1-8b',
         messages: [{ role: 'system', content: 'You are VEX AI. Expert in math/physics.' }, { role: 'user', content: prompt }],
-        max_tokens: 800,
+        max_tokens: maxTokens,
         temperature: 0.2
-    }, { headers: { 'Authorization': `Bearer ${ENV.CEREBRAS_API_KEY}` }, timeout: 5000 });
+    }, { headers: { 'Authorization': `Bearer ${ENV.CEREBRAS_API_KEY}` }, timeout: 10000 });
     return res.data.choices[0].message.content.trim();
 }
 
-async function callSambaNova(prompt) {
+async function callSambaNova(prompt, maxTokens) {
     if (!ENV.SAMBANOVA_API_KEY) throw 'No key';
     const res = await axios.post('https://api.sambanova.ai/v1/chat/completions', {
-        model: 'Meta-Llama-3.1-70B-Instruct',
+        model: 'Meta-Llama-3.1-8B-Instruct',
         messages: [{ role: 'system', content: 'You are VEX AI.' }, { role: 'user', content: prompt }],
-        max_tokens: 800
-    }, { headers: { 'Authorization': `Bearer ${ENV.SAMBANOVA_API_KEY}` }, timeout: 5000 });
+        max_tokens: maxTokens
+    }, { headers: { 'Authorization': `Bearer ${ENV.SAMBANOVA_API_KEY}` }, timeout: 10000 });
     return res.data.choices[0].message.content.trim();
 }
 
-async function callGemini(prompt) {
+async function callGemini(prompt, maxTokens) {
     if (!ENV.GEMINI_API_KEY) throw 'No key';
-    const res = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${ENV.GEMINI_API_KEY}`, {
-        contents: [{ parts: [{ text: `You are VEX AI. ${prompt}` }] }]
-    }, { timeout: 5000 });
+    const res = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ENV.GEMINI_API_KEY}`, {
+        contents: [{ parts: [{ text: `You are VEX AI. ${prompt}` }] }],
+        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.2 }
+    }, { timeout: 10000 });
     return res.data.candidates[0].content.parts[0].text.trim();
 }
 
-async function callOpenRouter(prompt) {
+async function callOpenRouter(prompt, maxTokens) {
     if (!ENV.OPENROUTER_API_KEY) throw 'No key';
     const res = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-        model: 'meta-llama/llama-3.1-70b-instruct',
+        model: 'meta-llama/llama-3.1-8b-instruct:free',
         messages: [{ role: 'system', content: 'You are VEX AI.' }, { role: 'user', content: prompt }],
-        max_tokens: 800
-    }, { headers: { 'Authorization': `Bearer ${ENV.OPENROUTER_API_KEY}` }, timeout: 5000 });
+        max_tokens: maxTokens
+    }, { headers: { 'Authorization': `Bearer ${ENV.OPENROUTER_API_KEY}` }, timeout: 10000 });
     return res.data.choices[0].message.content.trim();
 }
 
-async function callCloudflare(prompt) {
+async function callCloudflare(prompt, maxTokens) {
     if (!ENV.CLOUDFLARE_API_KEY ||!ENV.CLOUDFLARE_ACCOUNT_ID) throw 'No key';
-    const res = await axios.post(`https://api.cloudflare.com/client/v4/accounts/${ENV.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-70b-instruct`, {
-        messages: [{ role: 'system', content: 'You are VEX AI.' }, { role: 'user', content: prompt }]
-    }, { headers: { 'Authorization': `Bearer ${ENV.CLOUDFLARE_API_KEY}` }, timeout: 5000 });
+    const res = await axios.post(`https://api.cloudflare.com/client/v4/accounts/${ENV.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`, {
+        messages: [{ role: 'system', content: 'You are VEX AI.' }, { role: 'user', content: prompt }],
+        max_tokens: maxTokens
+    }, { headers: { 'Authorization': `Bearer ${ENV.CLOUDFLARE_API_KEY}` }, timeout: 10000 });
     return res.data.result.response.trim();
 }
 
