@@ -118,7 +118,7 @@ Generate NOW. Output ONLY HTML code with no explanation:`;
 
             let htmlCode;
             try {
-                htmlCode = await callAI(aiPrompt, 6000);
+                htmlCode = await callAI(aiPrompt, 2600);
             } catch (aiErr) {
                 throw new Error(`AI_GENERATION_FAILED: ${aiErr.message}. All 6 AI models failed to respond. Check if API keys are valid.`);
             }
