@@ -1,13 +1,26 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const { createClient } = require('@supabase/supabase-js');
+
+// =========================
+// SUPABASE - FORCED & SAFE
+// =========================
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_KEY) {
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { persistSession: false }
+    });
+}
 
 // =========================
 // GAME STATE - RAM ONLY
 // =========================
 const players = new Map(); // userId -> player data
-const battles = new Map(); // chatId -> active battle
-const cooldowns = new Map(); // userId -> {collect, fight, rob}
+const cooldowns = new Map(); // userId_type -> timestamp
 
 const BATTLE_IMAGE = 'https://i.ibb.co/4Z7Sf3q5/Chat-GPT-Image-May-8-2026-07-10-41-PM.png';
 
@@ -66,7 +79,30 @@ module.exports = {
         if (!action || action === 'help' || action === 'profile') {
             const imgPath = await downloadImage(BATTLE_IMAGE).catch(() => null);
 
-            const profileText = `⚔️ *VEX BATTLE ARENA PRO* ⚔️\n\n👤 Player: ${userName}\n💰 Coins: ${player.coins}\n❤️ Health: ${player.health}/${player.maxHealth}\n🛡️ Defense: ${getTotalDefense(player)}\n⚔️ Damage: ${getTotalDamage(player)}\n🏆 W/L: ${player.wins}/${player.losses}\n🔥 Streak: ${player.streak}\n⚠️ Arrest: ${player.arrestLevel}/5\n\n*COMMANDS:*\n.battle collect - Hourly coins\n.battle daily - Daily reward\n.battle shop - Weapon shop\n.battle buy <item> - Buy item\n.battle sell <item> - Sell 60%\n.battle use <item> - Use medkit\n.battle inv - Inventory\n.battle heal - Heal 50 coins\n.battle fight @user - PVP battle\n.battle rob @user - Rob player\n.battle top - Leaderboard\n.battle cheat <code> - Secret`;
+            const profileText = `⚔️ *VEX BATTLE ARENA PRO* ⚔️\n\n` +
+                `┌─ *PLAYER STATS* ─────────\n` +
+                `│ 👤 Player: ${userName}\n` +
+                `│ 💰 Coins: ${player.coins}\n` +
+                `│ ❤️ Health: ${player.health}/${player.maxHealth}\n` +
+                `│ 🛡️ Defense: ${getTotalDefense(player)}\n` +
+                `│ ⚔️ Damage: ${getTotalDamage(player)}\n` +
+                `│ 🏆 W/L: ${player.wins}/${player.losses}\n` +
+                `│ 🔥 Streak: ${player.streak}\n` +
+                `│ ⚠️ Arrest: ${player.arrestLevel}/5\n` +
+                `└────────────────────────\n\n` +
+                `*COMMANDS:*\n` +
+                `.battle collect - Hourly coins\n` +
+                `.battle daily - Daily reward\n` +
+                `.battle shop - Weapon shop\n` +
+                `.battle buy <item> - Buy item\n` +
+                `.battle sell <item> - Sell 60%\n` +
+                `.battle use <item> - Use medkit\n` +
+                `.battle inv - Inventory\n` +
+                `.battle heal - Heal 50 coins\n` +
+                `.battle fight @user - PVP battle\n` +
+                `.battle rob @user - Rob player\n` +
+                `.battle top - Leaderboard\n` +
+                `.battle cheat <code> - Secret`;
 
             if (imgPath) {
                 await sock.sendMessage(chatId, {
@@ -90,10 +126,10 @@ module.exports = {
 
             if (now - player.lastCollect < hourMs) {
                 const timeLeft = Math.ceil((hourMs - (now - player.lastCollect)) / 60000);
-                return m.reply(`⏰ Cooldown active! Wait ${timeLeft} minutes\n\nNext collect: ${new Date(player.lastCollect + hourMs).toLocaleTimeString()}`);
+                return m.reply(`⏰ *COOLDOWN ACTIVE*\n\nWait ${timeLeft} minutes\nNext collect: ${new Date(player.lastCollect + hourMs).toLocaleTimeString()}`);
             }
 
-            const amount = Math.floor(Math.random() * 200) + 100; // 100-300
+            const amount = Math.floor(Math.random() * 200) + 100;
             player.coins += amount;
             player.lastCollect = now;
 
@@ -109,12 +145,12 @@ module.exports = {
 
             if (now - player.lastDaily < dayMs) {
                 const timeLeft = Math.ceil((dayMs - (now - player.lastDaily)) / 3600000);
-                return m.reply(`⏰ Daily already claimed!\n\nNext reward in ${timeLeft} hours`);
+                return m.reply(`⏰ *DAILY CLAIMED*\n\nNext reward in ${timeLeft} hours`);
             }
 
             player.coins += DAILY_REWARD;
             player.lastDaily = now;
-            player.health = player.maxHealth; // Full heal
+            player.health = player.maxHealth;
 
             return m.reply(`🎁 *DAILY REWARD*\n\n💰 +${DAILY_REWARD} coins\n❤️ Health restored to ${player.maxHealth}\n💵 Balance: ${player.coins}\n\nCome back tomorrow!`);
         }
@@ -123,21 +159,28 @@ module.exports = {
         // 4. SHOP
         // =========================
         if (action === 'shop') {
-            let shopText = `🏪 *VEX WEAPON SHOP*\n\n💰 Your Coins: ${player.coins}\n\n*WEAPONS:*\n`;
+            let shopText = `🏪 *VEX WEAPON SHOP*\n\n💰 Your Coins: ${player.coins}\n\n`;
 
-            Object.entries(WEAPONS).filter(([k,v]) => v.type === 'weapon').forEach(([key, w]) => {
-                shopText += `${w.emoji} *${w.name}* - ${w.price} coins\n └ DMG: ${w.damage}\n └.battle buy ${key}\n\n`;
+            shopText += `┌─ *WEAPONS* ─────────────\n`;
+            Object.entries(WEAPONS).filter(([k, v]) => v.type === 'weapon').forEach(([key, w]) => {
+                shopText += `│ ${w.emoji} *${w.name}* - ${w.price} coins\n`;
+                shopText += `│ └ DMG: ${w.damage} |.battle buy ${key}\n`;
             });
+            shopText += `└────────────────────────\n\n`;
 
-            shopText += `*ARMOR:*\n`;
-            Object.entries(WEAPONS).filter(([k,v]) => v.type === 'armor').forEach(([key, w]) => {
-                shopText += `${w.emoji} *${w.name}* - ${w.price} coins\n └ DEF: ${w.defense}\n └.battle buy ${key}\n\n`;
+            shopText += `┌─ *ARMOR* ─────────────\n`;
+            Object.entries(WEAPONS).filter(([k, v]) => v.type === 'armor').forEach(([key, w]) => {
+                shopText += `│ ${w.emoji} *${w.name}* - ${w.price} coins\n`;
+                shopText += `│ └ DEF: ${w.defense} |.battle buy ${key}\n`;
             });
+            shopText += `└────────────────────────\n\n`;
 
-            shopText += `*CONSUMABLES:*\n`;
-            Object.entries(WEAPONS).filter(([k,v]) => v.type === 'consumable').forEach(([key, w]) => {
-                shopText += `${w.emoji} *${w.name}* - ${w.price} coins\n └ HEAL: ${w.heal} HP\n └.battle buy ${key}\n\n`;
+            shopText += `┌─ *CONSUMABLES* ─────────\n`;
+            Object.entries(WEAPONS).filter(([k, v]) => v.type === 'consumable').forEach(([key, w]) => {
+                shopText += `│ ${w.emoji} *${w.name}* - ${w.price} coins\n`;
+                shopText += `│ └ HEAL: ${w.heal} HP |.battle buy ${key}\n`;
             });
+            shopText += `└────────────────────────`;
 
             return m.reply(shopText);
         }
@@ -152,7 +195,7 @@ module.exports = {
             if (!item) return m.reply(`❌ Item not found! Check.battle shop`);
 
             if (player.coins < item.price) {
-                return m.reply(`❌ Insufficient funds!\n\nNeed: ${item.price}\nHave: ${player.coins}\nMissing: ${item.price - player.coins}`);
+                return m.reply(`❌ *INSUFFICIENT FUNDS*\n\nNeed: ${item.price}\nHave: ${player.coins}\nMissing: ${item.price - player.coins}`);
             }
 
             player.coins -= item.price;
@@ -223,7 +266,15 @@ module.exports = {
             const weaponCount = {};
             player.weapons.forEach(w => weaponCount[w] = (weaponCount[w] || 0) + 1);
 
-            let invText = `🎒 *INVENTORY*\n\n❤️ Health: ${player.health}/${player.maxHealth}\n💰 Coins: ${player.coins}\n⚔️ Damage: ${getTotalDamage(player)}\n🛡️ Defense: ${getTotalDefense(player)}\n🏆 W/L: ${player.wins}/${player.losses}\n🔥 Streak: ${player.streak}\n\n`;
+            let invText = `🎒 *INVENTORY*\n\n`;
+            invText += `┌─ *STATS* ───────────────\n`;
+            invText += `│ ❤️ Health: ${player.health}/${player.maxHealth}\n`;
+            invText += `│ 💰 Coins: ${player.coins}\n`;
+            invText += `│ ⚔️ Damage: ${getTotalDamage(player)}\n`;
+            invText += `│ 🛡️ Defense: ${getTotalDefense(player)}\n`;
+            invText += `│ 🏆 W/L: ${player.wins}/${player.losses}\n`;
+            invText += `│ 🔥 Streak: ${player.streak}\n`;
+            invText += `└────────────────────────\n\n`;
 
             if (player.weapons.length === 0) {
                 invText += `❌ No items owned\nBuy:.battle shop`;
@@ -244,7 +295,7 @@ module.exports = {
         // =========================
         if (action === 'fight' || action === 'attack') {
             if (checkCooldown(userId, 'fight')) {
-                return m.reply(`⏰ Fight cooldown! Wait 30 seconds`);
+                return m.reply(`⏰ *FIGHT COOLDOWN*\n\nWait 30 seconds between battles`);
             }
 
             const target = args[1]?.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
@@ -274,11 +325,14 @@ module.exports = {
 
             setCooldown(userId, 'fight', 30000);
 
-            let resultText = `⚔️ *BATTLE REPORT* ⚔️\n\n👤 ${userName} vs ${targetName}\n\n`;
-            resultText += `💥 You: ${finalPlayerDmg} DMG (${playerDmg} ATK - ${enemyDef} DEF)\n`;
-            resultText += `💥 Enemy: ${finalEnemyDmg} DMG (${enemyDmg} ATK - ${playerDef} DEF)\n\n`;
-            resultText += `❤️ Your HP: ${Math.max(0, player.health)}/${player.maxHealth}\n`;
-            resultText += `❤️ Enemy HP: ${Math.max(0, enemy.health)}/${enemy.maxHealth}\n\n`;
+            let resultText = `⚔️ *BATTLE REPORT* ⚔️\n\n`;
+            resultText += `┌─ *COMBAT* ─────────────\n`;
+            resultText += `│ 👤 ${userName} vs ${targetName}\n`;
+            resultText += `│ 💥 You: ${finalPlayerDmg} DMG (${playerDmg} ATK - ${enemyDef} DEF)\n`;
+            resultText += `│ 💥 Enemy: ${finalEnemyDmg} DMG (${enemyDmg} ATK - ${playerDef} DEF)\n`;
+            resultText += `│ ❤️ Your HP: ${Math.max(0, player.health)}/${player.maxHealth}\n`;
+            resultText += `│ ❤️ Enemy HP: ${Math.max(0, enemy.health)}/${enemy.maxHealth}\n`;
+            resultText += `└────────────────────────\n\n`;
 
             if (enemy.health <= 0) {
                 const reward = Math.floor(Math.random() * 400) + 300;
@@ -314,7 +368,7 @@ module.exports = {
         // =========================
         if (action === 'rob') {
             if (checkCooldown(userId, 'rob')) {
-                return m.reply(`⏰ Rob cooldown! Wait 60 seconds`);
+                return m.reply(`⏰ *ROB COOLDOWN*\n\nWait 60 seconds between robberies`);
             }
 
             const target = args[1]?.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
@@ -327,7 +381,7 @@ module.exports = {
             const enemy = players.get(target);
             if (enemy.coins < 100) return m.reply(`❌ Target too poor! Minimum 100 coins to rob`);
 
-            const successRate = 0.6 - (player.arrestLevel * 0.1); // Higher arrest = lower success
+            const successRate = 0.6 - (player.arrestLevel * 0.1);
             const success = Math.random() < successRate;
 
             setCooldown(userId, 'rob', 60000);
@@ -368,8 +422,8 @@ module.exports = {
         // =========================
         if (action === 'top' || action === 'leaderboard') {
             const sorted = Array.from(players.entries())
-              .sort((a, b) => b[1].wins - a[1].wins)
-              .slice(0, 10);
+             .sort((a, b) => b[1].wins - a[1].wins)
+             .slice(0, 10);
 
             if (sorted.length === 0) return m.reply("📊 No warriors yet. Start fighting!");
 
@@ -379,7 +433,7 @@ module.exports = {
                 return `${medal} ${name}\n └ ${p.wins}W/${p.losses}L | ${p.coins} coins`;
             }));
 
-            return m.reply(`🏆 *BATTLE LEADERBOARD*\n━━━━━━━━━━━━━━\n\n${leaderboard.join('\n\n')}\n\n━━━━━━━━━━━━━━\nFight to rank up!`);
+            return m.reply(`🏆 *BATTLE LEADERBOARD*\n${'━'.repeat(25)}\n\n${leaderboard.join('\n\n')}\n\n${'━'.repeat(25)}\nFight to rank up!`);
         }
 
         // =========================
@@ -405,7 +459,7 @@ module.exports = {
 // HELPERS
 // =========================
 function getTotalDamage(player) {
-    let damage = 5; // Base
+    let damage = 5;
     player.weapons.forEach(w => {
         if (WEAPONS[w]?.damage) damage += WEAPONS[w].damage;
     });
@@ -447,4 +501,8 @@ async function downloadImage(url) {
         writer.on('finish', () => resolve(imgPath));
         writer.on('error', reject);
     });
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
