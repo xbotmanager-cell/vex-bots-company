@@ -20,6 +20,7 @@
     "@supabase/supabase-js": "^2.43.0",
     "@google/generative-ai": "^0.11.0",
     "@adiwajshing/keyed-db": "^0.2.4",
+    "@octokit/rest": "^21.0.0",
     "axios": "^1.6.8",
     "cheerio": "^1.0.0-rc.12",
     "fluent-ffmpeg": "^2.1.2",
