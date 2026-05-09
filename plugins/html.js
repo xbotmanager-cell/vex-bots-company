@@ -462,4 +462,9 @@ async function callCloudflare(prompt, maxTokens) {
     }, {
         headers: { 'Authorization': `Bearer ${ENV.CLOUDFLARE_API_KEY}` },
         timeout: 25000
-    })
+    });
+    return res.data.result.response.trim();
+}
+
+// Reset AI count daily
+setInterval(() => { aiCallCount = {}; }, 86400000);
