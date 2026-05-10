@@ -1,381 +1,472 @@
-require("dotenv").config();
+// ============================================
+// VEX TENANT CLIENT - index1.js
+// Dev: Lupin Starnley | For: VEX BOT COMPANY
+// ============================================
 
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore,
-    getContentType
-} = require("@whiskeysockets/baileys");
+// ================= CLIENT MODE SETUP =================
+process.env.IS_CLIENT = 'true';
+process.env.TENANT_ID = process.env.TENANT_ID || process.env.RENDER_SERVICE_NAME || 'vex_client_default';
 
-const pino = require("pino");
-const fs = require("fs");
-const path = require("path");
+// ================= CORE MODULES =================
+const { createClient } = require("@supabase/supabase-js");
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
-const QRCode = require("qrcode");
 
-const { createClient } = require("@supabase/supabase-js");
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+// ================= LOAD MASTER SUPABASE =================
+const MASTER_URL = process.env.MASTER_SUPABASE_URL || process.env.SUPABASE_URL;
+const MASTER_KEY = process.env.MASTER_SUPABASE_KEY || process.env.SUPABASE_KEY;
 
-// ================= GLOBAL =================
-global.prefix = ".";
-global.clientId = process.env.CLIENT_ID || "VEX_DEFAULT";
+if (!MASTER_URL || !MASTER_KEY) {
+    console.error("❌ MASTER_SUPABASE_URL na MASTER_SUPABASE_KEY zinahitajika");
+    process.exit(1);
+}
 
-// ================= CORE =================
-const router = require("./core/router");
-const cache = require("./core/cache");
+const masterSupabase = createClient(MASTER_URL, MASTER_KEY);
 
-// ================= PATHS =================
-const pluginPath = path.join(__dirname, "plugins");
-const observerPath = path.join(__dirname, "observers");
-
-// ================= STORAGE =================
-const commands = new Map();
-const aliases = new Map();
-const observers = [];
-
-// ================= SYSTEM 1: AUTO DATABASE SETUP (NEW) =================
-/**
- * Huu mfumo unatengeneza table zote zinazohitajika moja kwa moja 
- * kama hazipo kule Supabase bila wewe kuingia kule manually.
- */
-async function autoSetupDatabase() {
-    console.log("🛠️ Checking System Integrity...");
-    const sql = `
-    -- Create vex_session if not exists
-    CREATE TABLE IF NOT EXISTS public.vex_session (
-        id TEXT PRIMARY KEY,
-        client_id TEXT,
-        data TEXT,
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-
-    -- Create vex_settings if not exists
-    CREATE TABLE IF NOT EXISTS public.vex_settings (
-        id SERIAL PRIMARY KEY,
-        client_id TEXT,
-        setting_name TEXT,
-        extra_data JSONB DEFAULT '{}'::jsonb,
-        UNIQUE(client_id, setting_name)
-    );
-
-    -- Create vc_meta for analytical data (New Persistence)
-    CREATE TABLE IF NOT EXISTS public.vc_meta (
-        key TEXT PRIMARY KEY,
-        value JSONB DEFAULT '{}'::jsonb,
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    `;
-
+// ================= BOOT LOADER: LOAD CONFIG FROM vex_config =================
+async function loadGlobalConfig() {
     try {
-        const { error } = await supabase.rpc('exec_sql', { sql_query: sql });
-        if (error) console.log("⚠️ Database Auto-Setup Skip: Ensure 'exec_sql' RPC is enabled if needed.");
-        else console.log("✅ Database Structure Verified.");
+        const { data, error } = await masterSupabase.from('vex_config').select('key, value');
+        if (error) throw error;
+        
+        data.forEach(item => {
+            if (!process.env[item.key]) process.env[item.key] = item.value;
+        });
+        
+        console.log(`✅ VEX CONFIG: Loaded ${data.length} keys from Supabase`);
     } catch (e) {
-        console.log("⚠️ Setup Error:", e.message);
+        console.error("❌ Failed to load vex_config:", e.message);
     }
 }
 
-// ================= SYSTEM 2: METADATA PERSISTENCE (NEW) =================
-const vMeta = {
-    get: async (key) => {
-        const { data } = await supabase.from("vc_meta").select("value").eq("key", key).single();
-        return data ? data.value : null;
-    },
-    set: async (key, val) => {
-        await supabase.from("vc_meta").upsert({ key, value: val, updated_at: new Date() });
-    }
-};
-
-// ================= AUTO RELOAD ENGINE =================
-let reloadLock = false;
-function startAutoReload() {
-    if (reloadLock) return;
-    reloadLock = true;
-    try {
-        fs.watch(pluginPath, { persistent: true }, (event, file) => {
-            if (file && file.endsWith(".js")) {
-                console.log(`♻️ Plugin changed: ${file}`);
-                loadCommands();
+// ================= TENANT WRAPPER =================
+async function initTenantSystem() {
+    // 1. Set tenant_id kwa Postgres session
+    await masterSupabase.rpc('set_tenant', { tenant_name: process.env.TENANT_ID });
+    
+    // 2. Override global.clientId
+    global.clientId = process.env.TENANT_ID;
+    global.tenantId = process.env.TENANT_ID;
+    
+    // 3. Wrap Supabase - Auto inject tenant_id
+    const originalFrom = masterSupabase.from.bind(masterSupabase);
+    masterSupabase.from = function(table) {
+        if (table === 'vex_config') return originalFrom(table); // Config ni global
+        
+        const query = originalFrom(table);
+        const TENANT = process.env.TENANT_ID;
+        
+        const originalInsert = query.insert.bind(query);
+        query.insert = (data) => {
+            if (Array.isArray(data)) {
+                data = data.map(d => ({ ...d, tenant_id: TENANT }));
+            } else {
+                data.tenant_id = TENANT;
             }
-        });
-        fs.watch(observerPath, { persistent: true }, (event, file) => {
-            if (file && file.endsWith(".js")) {
-                console.log(`👁️ Observer changed: ${file}`);
-                loadObservers();
-            }
-        });
-        console.log("🔥 AUTO RELOAD ENABLED");
-    } catch (e) {
-        console.log("Auto reload error:", e.message);
-    }
-}
-
-// ================= SERVER =================
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
-const PORT = process.env.PORT || 10000;
-
-// ================= LOAD COMMANDS =================
-function loadCommands() {
-    commands.clear();
-    aliases.clear();
-    if (!fs.existsSync(pluginPath)) fs.mkdirSync(pluginPath);
-    const files = fs.readdirSync(pluginPath).filter(f => f.endsWith(".js"));
-    for (const file of files) {
-        try {
-            const filePath = path.join(pluginPath, file);
-            delete require.cache[require.resolve(filePath)];
-            const plugin = require(filePath);
-            const name = plugin.command || file.replace(".js", "");
-            commands.set(name, plugin);
-            if (Array.isArray(plugin.alias)) {
-                for (const a of plugin.alias) {
-                    aliases.set(a, name);
-                }
-            }
-        } catch (e) {
-            console.error(`Error loading command ${file}:`, e.message);
-        }
-    }
-    console.log(`✅ Commands Loaded: ${commands.size}`);
-}
-
-// ================= LOAD OBSERVERS =================
-function loadObservers() {
-    observers.length = 0;
-    if (!fs.existsSync(observerPath)) fs.mkdirSync(observerPath);
-    const files = fs.readdirSync(observerPath).filter(f => f.endsWith(".js"));
-    for (const file of files) {
-        try {
-            const filePath = path.join(observerPath, file);
-            delete require.cache[require.resolve(filePath)];
-            const obs = require(filePath);
-            if (obs.onMessage) observers.push(obs);
-        } catch (e) {
-            console.error(`Error loading observer ${file}:`, e.message);
-        }
-    }
-    console.log(`👁️ Observers Loaded: ${observers.length}`);
-}
-
-// ================= SESSION CLOUD (RESTORE/SYNC - UNCHANGED) =================
-async function syncSessionToCloud(creds) {
-    try {
-        const base64 = Buffer.from(JSON.stringify(creds)).toString("base64");
-        await supabase.from("vex_session").upsert({
-            id: 'v1_session',
-            data: base64,
-            client_id: global.clientId
-        });
-    } catch (e) {}
-}
-
-async function loadSessionFromCloud() {
-    try {
-        const { data } = await supabase
-            .from("vex_session")
-            .select("data")
-            .eq("id", 'v1_session')
-            .single();
-        if (data) {
-            const decoded = Buffer.from(data.data, "base64").toString("utf-8");
-            if (!fs.existsSync("./session")) fs.mkdirSync("./session");
-            fs.writeFileSync("./session/creds.json", decoded);
-            console.log(`☁️ Session Restored from Supabase for ${global.clientId}`);
-        }
-    } catch (e) {}
-}
-
-// ================= PREFIX SYNC =================
-async function syncSettings() {
-    try {
-        const { data } = await supabase
-            .from("vex_settings")
-            .select("extra_data")
-            .eq("setting_name", "prefix")
-            .eq("client_id", global.clientId)
-            .single();
-
-        if (data?.extra_data?.current) {
-            global.prefix = data.extra_data.current;
-        }
-
-        supabase
-            .channel(`prefix-${global.clientId}`)
-            .on("postgres_changes", {
-                event: "UPDATE",
-                schema: "public",
-                table: "vex_settings",
-                filter: `setting_name=eq.prefix&client_id=eq.${global.clientId}`
-            }, payload => {
-                global.prefix = payload.new.extra_data.current;
-            })
-            .subscribe();
-    } catch (e) {}
-}
-
-// ================= MAIN START =================
-async function startVex() {
-    await autoSetupDatabase(); // Anza kwa ku-setup DB
-    await loadSessionFromCloud();
-    await syncSettings();
-
-    loadCommands();
-    loadObservers();
-    startAutoReload(); 
-
-    const { state, saveCreds } = await useMultiFileAuthState("session");
-    const { version } = await fetchLatestBaileysVersion();
-
-    const sock = makeWASocket({
-        version,
-        logger: pino({ level: "silent" }),
-        printQRInTerminal: false,
-        auth: {
-            creds: state.creds,
-            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" }))
-        },
-        browser: ["VEX CORE", "Chrome", "20.0.0"]
-    });
-
-// ================= MESSAGE HANDLING =================
-    sock.ev.on("messages.upsert", async ({ messages }) => {
-        const m = messages[0];
-        if (!m || !m.message) return;
-
-        let body =
-            m.message?.conversation ||
-            m.message?.extendedTextMessage?.text ||
-            m.message?.imageMessage?.caption ||
-            m.message?.videoMessage?.caption ||
-            "";
-        body = body.trim();
-
-        m.chat = m.key.remoteJid;
-        m.sender = m.key.participant || m.chat;
-        m.reply = (t) => sock.sendMessage(m.chat, { text: t }, { quoted: m });
-
-        // Build Context for Plugins
-        const context = {
-            supabase,
-            cache,
-            vMeta, // Ongeza mfumo mpya wa Metadata hapa
-            clientId: global.clientId,
-            userSettings: cache.getUser?.(m.sender) || {}
+            return originalInsert(data);
         };
-
-        // 1. RUN OBSERVERS
-        for (const obs of observers) {
-            try {
-                if (!obs.trigger || obs.trigger(m)) {
-                    await obs.onMessage(m, sock, context);
-                }
-            } catch (e) {}
-        }
-
-        // 2. ROUTER EXECUTION
-        try {
-            const route = await router(m, {
-                body,
-                commands,
-                aliases,
-                observers,
-                cache,
-                supabase,
-                prefix: global.prefix,
-                clientId: global.clientId
-            });
-
-            if (!route) return;
-
-            if (route.type === "command" && route.command) {
-                // Combine context
-                const fullContext = { ...route.context, vMeta };
-                await route.command.execute(m, sock, fullContext);
-            } 
-            else if (route.type === "custom" && typeof route.execute === "function") {
-                await route.execute(sock);
+        
+        const originalSelect = query.select.bind(query);
+        query.select = (...args) => originalSelect(...args).eq('tenant_id', TENANT);
+        
+        const originalUpdate = query.update.bind(query);
+        query.update = (data) => originalUpdate(data).eq('tenant_id', TENANT);
+        
+        const originalDelete = query.delete.bind(query);
+        query.delete = () => originalDelete().eq('tenant_id', TENANT);
+        
+        const originalUpsert = query.upsert.bind(query);
+        query.upsert = (data, opt) => {
+            if (Array.isArray(data)) {
+                data = data.map(d => ({ ...d, tenant_id: TENANT }));
+            } else {
+                data.tenant_id = TENANT;
             }
-        } catch (e) {
-            console.error("Router Execution Error:", e.message);
-        }
-    });
-
-    // ================= CONNECTION =================
-    sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-            const qrData = await QRCode.toDataURL(qr);
-            io.emit("qr", qrData);
-        }
-
-        if (connection === "close") {
-            const shouldReconnect =
-                (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) startVex();
-        }
-
-        if (connection === "open") {
-            console.log(`✅ VEX Connected Successfully: ${global.clientId}`);
-            io.emit("connected");
-            await syncSessionToCloud(state.creds);
-        }
-    });
-
-    sock.ev.on("creds.update", async () => {
-        await saveCreds();
-        await syncSessionToCloud(state.creds);
-    });
+            return originalUpsert(data, opt);
+        };
+        
+        return query;
+    };
+    
+    // 4. Replace global supabase
+    global.supabase = masterSupabase;
+    global.masterSupabase = masterSupabase;
+    
+    console.log(`🔥 TENANT MODE: ${process.env.TENANT_ID} ACTIVE`);
 }
 
-// ================= UI SERVER (UNCHANGED) =================
-app.get("/", (req, res) => {
-    res.send(`<!DOCTYPE html>
+// ================= CUSTOM UI SERVER - GLASSMORPHISM =================
+function startCustomServer() {
+    const app = express();
+    const server = http.createServer(app);
+    const io = new Server(server);
+    const PORT = process.env.PORT || 10000;
+    
+    const DEPLOY_KEY = process.env.DEPLOY_KEY || 'vex_secret_2026';
+    const BOT_IMAGE = 'https://i.ibb.co/Myk40VZF/Chat-GPT-Image-May-10-2026-12-07-48-PM.png';
+    const WHATSAPP = '255780470905';
+    
+    // MIDDLEWARE: LINDA RENDER LINK
+    app.use((req, res, next) => {
+        // Ruhusu socket.io na static
+        if (req.path.startsWith('/socket.io')) return next();
+        
+        // Check deploy key
+        if (req.query.k !== DEPLOY_KEY && req.path !== '/blocked') {
+            return res.redirect('/blocked');
+        }
+        next();
+    });
+    
+    // PAGE YA KUMKATA MGENI
+    app.get('/blocked', (req, res) => {
+        res.status(403).send(`<!DOCTYPE html>
 <html>
 <head>
-<title>VEX CORE</title>
-<script src="/socket.io/socket.io.js"></script>
+<title>Access Denied - VEX HOST</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body { margin:0; height:100vh; display:flex; justify-content:center; align-items:center; background:#000; color:#00ffe1; font-family:monospace; }
-.card { padding:20px; border-radius:20px; backdrop-filter:blur(15px); background:rgba(255,255,255,0.05); box-shadow:0 0 20px #00ffe1; text-align:center; }
-img { margin-top:10px; border-radius:10px; }
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    background:#0a0014;
+    background-image: 
+        radial-gradient(circle at 20% 50%, #4a0080 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, #6a00ff 0%, transparent 50%),
+        radial-gradient(circle at 40% 20%, #8a00ff 0%, transparent 50%);
+    font-family:'Orbitron',monospace;
+    color:#fff;
+    overflow:hidden;
+}
+.card{
+    padding:40px;
+    border-radius:30px;
+    background:rgba(255,255,255,0.05);
+    backdrop-filter:blur(20px);
+    border:1px solid rgba(138,0,255,0.3);
+    box-shadow:0 0 60px rgba(138,0,255,0.4), inset 0 0 60px rgba(138,0,255,0.1);
+    text-align:center;
+    max-width:500px;
+    animation:float 3s ease-in-out infinite;
+}
+@keyframes float{
+    0%,100%{transform:translateY(0)}
+    50%{transform:translateY(-20px)}
+}
+h1{
+    font-size:2.5em;
+    font-weight:900;
+    background:linear-gradient(90deg,#ff00ff,#8a00ff,#00ffff);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+    margin-bottom:20px;
+    text-shadow:0 0 30px rgba(255,0,255,0.5);
+}
+p{font-size:1.1em;color:#c0a0ff;margin:15px 0;line-height:1.6}
+.icon{font-size:5em;margin:20px 0;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
 </style>
 </head>
 <body>
 <div class="card">
-<h2>VEX SYSTEM</h2>
-<img id="qr" width="250" style="display:none;"/>
-<p id="status">INITIALIZING...</p>
+    <div class="icon">🛡️</div>
+    <h1>ACCESS DENIED</h1>
+    <p>Hii link ni ya mteja aliyelipa tu.</p>
+    <p>Nunua VEX BOT yako sasa kupata access.</p>
+    <p style="margin-top:30px;color:#ff00ff;">VEX HOST © 2026</p>
 </div>
+</body>
+</html>`);
+    });
+    
+    // MAIN PAGE - QR + PAIRING
+    app.get('/', async (req, res) => {
+        res.send(`<!DOCTYPE html>
+<html>
+<head>
+<title>VEX HOST - ${process.env.TENANT_ID}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    background:#0a0014;
+    background-image: 
+        radial-gradient(circle at 20% 50%, #4a0080 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, #6a00ff 0%, transparent 50%),
+        radial-gradient(circle at 40% 20%, #8a00ff 0%, transparent 50%);
+    font-family:'Rajdhani',sans-serif;
+    color:#fff;
+    padding:20px;
+}
+.container{
+    width:100%;
+    max-width:900px;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:30px;
+    align-items:center;
+}
+@media(max-width:768px){.container{grid-template-columns:1fr}}
+.card{
+    padding:30px;
+    border-radius:25px;
+    background:rgba(255,255,255,0.05);
+    backdrop-filter:blur(20px);
+    border:1px solid rgba(138,0,255,0.3);
+    box-shadow:0 0 60px rgba(138,0,255,0.4), inset 0 0 60px rgba(138,0,255,0.1);
+}
+.profile{
+    text-align:center;
+}
+.profile img{
+    width:150px;
+    height:150px;
+    border-radius:50%;
+    border:3px solid #8a00ff;
+    box-shadow:0 0 40px rgba(138,0,255,0.6);
+    margin-bottom:20px;
+    animation:glow 2s ease-in-out infinite;
+}
+@keyframes glow{
+    0%,100%{box-shadow:0 0 40px rgba(138,0,255,0.6)}
+    50%{box-shadow:0 0 60px rgba(255,0,255,0.8)}
+}
+h1{
+    font-family:'Orbitron',monospace;
+    font-size:2em;
+    font-weight:900;
+    background:linear-gradient(90deg,#ff00ff,#8a00ff,#00ffff);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+    margin-bottom:10px;
+}
+.tenant{
+    font-size:0.9em;
+    color:#8a00ff;
+    margin-bottom:20px;
+    word-break:break-all;
+}
+.status{
+    padding:15px;
+    border-radius:15px;
+    background:rgba(138,0,255,0.2);
+    border:1px solid rgba(138,0,255,0.4);
+    margin:20px 0;
+    font-weight:700;
+    font-size:1.1em;
+}
+.qr-box{
+    text-align:center;
+    padding:20px;
+    background:rgba(0,0,0,0.3);
+    border-radius:20px;
+    margin:20px 0;
+}
+.qr-box img{
+    width:100%;
+    max-width:280px;
+    border-radius:15px;
+    box-shadow:0 0 30px rgba(138,0,255,0.5);
+}
+.pair-box{
+    margin:20px 0;
+}
+.pair-box input{
+    width:100%;
+    padding:15px;
+    border-radius:12px;
+    border:1px solid rgba(138,0,255,0.4);
+    background:rgba(0,0,0,0.4);
+    color:#fff;
+    font-size:1.1em;
+    font-family:'Orbitron',monospace;
+    text-align:center;
+    margin-bottom:10px;
+}
+.btn{
+    width:100%;
+    padding:15px;
+    border:none;
+    border-radius:12px;
+    background:linear-gradient(90deg,#8a00ff,#ff00ff);
+    color:#fff;
+    font-size:1.1em;
+    font-weight:700;
+    font-family:'Orbitron',monospace;
+    cursor:pointer;
+    transition:all 0.3s;
+    box-shadow:0 0 20px rgba(138,0,255,0.5);
+}
+.btn:hover{
+    transform:translateY(-2px);
+    box-shadow:0 0 40px rgba(255,0,255,0.7);
+}
+.dev{
+    text-align:center;
+    margin-top:20px;
+    padding-top:20px;
+    border-top:1px solid rgba(138,0,255,0.3);
+}
+.dev p{color:#c0a0ff;margin:5px 0}
+.whatsapp{
+    display:inline-block;
+    margin-top:15px;
+    padding:12px 30px;
+    background:#25D366;
+    color:#fff;
+    text-decoration:none;
+    border-radius:12px;
+    font-weight:700;
+    transition:all 0.3s;
+}
+.whatsapp:hover{
+    transform:scale(1.05);
+    box-shadow:0 0 30px rgba(37,211,102,0.6);
+}
+.tabs{
+    display:flex;
+    gap:10px;
+    margin-bottom:20px;
+}
+.tab{
+    flex:1;
+    padding:12px;
+    background:rgba(138,0,255,0.2);
+    border:1px solid rgba(138,0,255,0.4);
+    border-radius:10px;
+    cursor:pointer;
+    text-align:center;
+    font-weight:700;
+    transition:all 0.3s;
+}
+.tab.active{
+    background:linear-gradient(90deg,#8a00ff,#ff00ff);
+    box-shadow:0 0 20px rgba(138,0,255,0.5);
+}
+.tab-content{display:none}
+.tab-content.active{display:block}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="card profile">
+        <img src="${BOT_IMAGE}" alt="VEX BOT">
+        <h1>VEX HOST</h1>
+        <div class="tenant">${process.env.TENANT_ID}</div>
+        <div class="status" id="status">⏳ INITIALIZING...</div>
+        <div class="dev">
+            <p>Dev: Lupin Starnley</p>
+            <a href="https://wa.me/${WHATSAPP}" target="_blank" class="whatsapp">💬 WhatsApp Support</a>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('qr')">QR CODE</div>
+            <div class="tab" onclick="switchTab('pair')">PAIRING CODE</div>
+        </div>
+        
+        <div class="tab-content active" id="qr-tab">
+            <div class="qr-box">
+                <img id="qr" style="display:none;" alt="QR Code">
+                <p id="qr-text" style="color:#8a00ff;margin-top:15px;">Waiting for QR...</p>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="pair-tab">
+            <div class="pair-box">
+                <input type="text" id="phone" placeholder="255XXX XXX XXX">
+                <button class="btn" onclick="requestPair()">GET PAIRING CODE</button>
+                <div id="pair-result" style="margin-top:15px;text-align:center;font-size:1.5em;font-weight:900;color:#ff00ff;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 const socket = io();
-const qr = document.getElementById("qr");
-const status = document.getElementById("status");
-socket.on("qr", d => {
+const qr = document.getElementById('qr');
+const qrText = document.getElementById('qr-text');
+const status = document.getElementById('status');
+
+socket.on('qr', d => {
     qr.src = d;
-    qr.style.display = "block";
-    status.innerText = "SCAN QR CODE";
+    qr.style.display = 'block';
+    qrText.innerText = '📱 Scan na WhatsApp yako';
+    status.innerText = '📲 SCAN QR CODE';
+    status.style.color = '#ff00ff';
 });
-socket.on("connected", () => {
-    qr.style.display = "none";
-    status.innerText = "CONNECTED";
-    status.style.color = "#00ff00";
+
+socket.on('pairing_code', code => {
+    document.getElementById('pair-result').innerText = code;
+    status.innerText = '🔢 PAIRING CODE READY';
 });
+
+socket.on('connected', () => {
+    qr.style.display = 'none';
+    qrText.innerText = '✅ Connected Successfully!';
+    status.innerText = '✅ BOT CONNECTED';
+    status.style.color = '#00ff00';
+    document.getElementById('pair-result').innerText = '✅ Connected!';
+});
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById(tab + '-tab').classList.add('active');
+}
+
+function requestPair() {
+    const phone = document.getElementById('phone').value.replace(/[^0-9]/g, '');
+    if(phone.length < 10) return alert('Namba si sahihi');
+    socket.emit('request_pair', phone);
+}
 </script>
 </body>
-</html>`);});
+</html>`);
+    });
+    
+    // SOCKET.IO EVENTS
+    io.on('connection', (socket) => {
+        socket.on('request_pair', async (phone) => {
+            // Hii itaunganishwa na Baileys requestPairingCode
+            if (global.sock && global.sock.requestPairingCode) {
+                try {
+                    const code = await global.sock.requestPairingCode(phone);
+                    socket.emit('pairing_code', code);
+                } catch (e) {
+                    socket.emit('pairing_code', 'ERROR');
+                }
+            }
+        });
+    });
+    
+    // Export io kwa index.js
+    global.io = io;
+    
+    server.listen(PORT, () => {
+        console.log(`🚀 VEX Server running on port ${PORT} for tenant: ${process.env.TENANT_ID}`);
+    });
+}
 
-server.listen(PORT, () => {
-    console.log(`🚀 VEX Server running on port ${PORT} for client: ${global.clientId}`);
-    startVex();
-});
-
-// ================= ERROR HANDLING =================
-process.on("uncaughtException", (err) => console.error("Caught exception: ", err));
-process.on("unhandledRejection", (reason, promise) => console.error("Unhandled Rejection:", reason));
+// ================= MAIN EXECUTION =================
+(async () => {
+    await loadGlobalConfig();
+    await initTenantSystem();
+    startCustomServer();
+    
+    // Load original index.js yako
+    require('./index.js');
+})();
