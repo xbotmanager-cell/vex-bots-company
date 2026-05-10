@@ -1,7 +1,7 @@
 /**
  * VEX MINI BOT - ULTIMATE CLOUD SYNC (V3.5 PRO MAX)
  * Fixed: Bad MAC Errors, Message Looping, SQL Text Casting
- * Features: Realtime Supabase TEXT Sync, Anti-Restart Logic, AutoStatus 💜
+ * Features: Realtime Supabase TEXT Sync, Anti-Restart Logic, AutoStatu 💜
  * Dev: Lupin Starnley
  */
 
