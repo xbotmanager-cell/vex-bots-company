@@ -29,8 +29,8 @@ module.exports = {
         const userId = user?.id || m.sender;
 
         // --- HANDLING QUOTED MESSAGE (REPLY) ---
-        const quotedText = m.quoted ? (m.quoted.text || m.quoted.caption || "") : "";
-        if (quotedText && !text) {
+        const quotedText = m.quoted? (m.quoted.text || m.quoted.caption || "") : "";
+        if (quotedText &&!text) {
             text = quotedText; // Kama amereply tu bila kuandika neno
         } else if (quotedText && text) {
             text = `Context from previous message: "${quotedText}"\n\nUser's new request: ${text}`;
@@ -38,7 +38,7 @@ module.exports = {
 
         const modes = {
             harsh: { react: "⚡", err: "💢 𝖂𝖍𝖆𝖙 𝖉𝖔 𝖞𝖔𝖚 𝖜𝖆𝖓𝖙, 𝖋𝖔𝖑?.𝖑𝖊𝖝 hello 🤬" },
-            normal: { react: "🧠", err: "❌ Usage: .lex hello" },
+            normal: { react: "🧠", err: "❌ Usage:.lex hello" },
             girl: { react: "💖", err: "🌸 𝑜𝑜𝓅𝓈𝒾𝑒! 𝓌𝓇𝒾𝓉𝑒 𝓈𝑜𝓂𝑒𝓉𝒽𝒾𝓃𝑔.𝓁𝑒𝓍 𝒽𝒾 𝒷𝒶𝒷𝑒~ 🍭" }
         };
 
@@ -48,17 +48,30 @@ module.exports = {
         // 1. Send Reaction
         await sock.sendMessage(m.chat, { react: { text: current.react, key: m.key } });
 
-        const systemPrompt = `You are Vex AI, a smart assistant created by Lupin Starnley. 
-        You are currently in CHAT mode. Focus on being helpful, witty, and engaging.
-        Style: ${style}. 
-        User Info: ${user?.name || 'Friend'}.`;
+        const systemPrompt = `You are Vex AI, a smart WhatsApp assistant created by Lupin Starnley Jimmoh (Phone: 255780470905).
+
+        CRITICAL RULES:
+        1. Answer in ${lang === 'sw'? 'Swahili' : lang === 'en'? 'English' : lang}. Match user's language exactly.
+        2. Keep replies SUPA SHORT - max 2-3 lines by default. No essays.
+        3. Be helpful, witty, direct. No long explanations unless user explicitly asks for "details", "explain more", "fafanua".
+        4. If user wants more details, then expand. Default = SHORT.
+        5. Style: ${style}.
+        6. User: ${user?.name || 'Friend'}.
+        7. You run on WhatsApp. You know math, coding, life, everything.
+        8. Never say "As an AI". You are Vex AI.
+        9. If asked who made you: "Lupin Starnley Jimmoh 🇹🇿"
+        10. If asked your number: "Sina namba, nipo WhatsApp tu. Creator wangu: 255780470905"
+        11. Don't add disclaimers or warnings unless dangerous topic.
+
+        CURRENT MODE: CHAT
+        RESPONSE LENGTH: SHORT by default, DETAILED only if user requests it.`;
 
         try {
             // 2. Call AI
             let response = await callAI(text, systemPrompt);
 
             // 3. Translation
-            if (lang !== 'en' && response) {
+            if (lang!== 'en' && response) {
                 try {
                     const res = await translate(response, { to: lang });
                     response = res.text;
@@ -79,7 +92,7 @@ module.exports = {
             }
 
             // 5. Final Reply
-            if (supabaseStatus !== "Online" && response) {
+            if (supabaseStatus!== "Online" && response) {
                 response += "\n\n⚠️ *Database imekaa vibaya kaka, ila nimejibu.*";
             }
 
