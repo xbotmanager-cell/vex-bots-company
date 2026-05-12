@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VEX | Neural Link Terminal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --neon-purple: #a855f7;
+            --neon-blue: #06b6d4;
+            --neon-pink: #ec4899;
+            --glass: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: #05010e;
+            color: #fff;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+        }
+
+        /* Ambient Background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: 
+                radial-gradient(circle at 10% 10%, rgba(109, 40, 217, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 90%, rgba(219, 39, 119, 0.15) 0%, transparent 40%),
+                #05010e;
+            z-index: -1;
+        }
+
+        /* Glassmorphism Classes */
+        .glass-panel {
+            background: var(--glass);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border);
+        }
+
+        .glow-purple { box-shadow: 0 0 20px rgba(168, 85, 247, 0.4); }
+        .glow-blue { box-shadow: 0 0 20px rgba(6, 182, 212, 0.4); }
+
+        /* Sidebar Transition */
+        .sidebar {
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { 
+            background: linear-gradient(var(--neon-purple), var(--neon-pink));
+            border-radius: 10px; 
+        }
+
+        /* Message Bubbles */
+        .msg-bubble {
+            max-width: 85%;
+            padding: 14px 18px;
+            border-radius: 20px;
+            position: relative;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .received {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(168, 85, 247, 0.3);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+
+        .sent {
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.4), rgba(236, 72, 153, 0.4));
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--neon-purple);
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        @keyframes typing {
+            0%, 100% { transform: translateY(0); opacity: 0.4; }
+            50% { transform: translateY(-4px); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar" class="sidebar fixed inset-y-0 left-0 w-80 z-50 glass-panel border-r -translate-x-full lg:translate-x-0">
+        <div class="p-6 flex flex-col h-full">
+            <div class="flex items-center gap-3 mb-8">
+                <div class="w-10 h-10 bg-gradient-to-tr from-purple-600 to-pink-500 rounded-xl flex items-center justify-center font-extrabold shadow-lg">V</div>
+                <h2 class="text-xl font-extrabold tracking-tighter bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">NEURAL LINK</h2>
+            </div>
+
+            <div class="flex-1 overflow-y-auto space-y-4 pr-2" id="node-list">
+                <p class="text-[10px] uppercase tracking-[0.2em] text-gray-500 font-bold mb-2">Active Protocols</p>
+                <!-- Contacts load here -->
+            </div>
+
+            <div class="mt-auto pt-6 border-t border-white/5">
+                <div class="relative group">
+                    <input type="text" id="target-input" placeholder="Enter ID/Number" class="w-full bg-black/40 border border-white/10 p-3 rounded-xl outline-none focus:border-purple-500 transition text-sm font-mono">
+                    <button onclick="addProtocol()" class="w-full mt-3 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:glow-purple transition active:scale-95">Link New Node</button>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- MAIN TERMINAL -->
+    <main class="flex-1 flex flex-col h-full lg:ml-80 relative">
+        
+        <!-- HEADER -->
+        <header class="glass-panel p-4 flex items-center justify-between border-b border-white/5 z-40">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleSidebar()" class="lg:hidden p-2 hover:bg-white/5 rounded-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                </button>
+                <div>
+                    <h3 id="active-target-display" class="font-bold text-blue-400 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-gray-600"></span> SELECT NODE
+                    </h3>
+                    <p id="status-display" class="text-[10px] font-mono opacity-50 uppercase tracking-widest">Awaiting encryption...</p>
+                </div>
+            </div>
+            <button onclick="location.href='/index.html'" class="px-4 py-2 bg-red-500/10 border border-red-500/50 text-red-500 text-[10px] font-bold rounded-lg hover:bg-red-500 hover:text-white transition uppercase tracking-tighter">Emergency Exit</button>
+        </header>
+
+        <!-- CHAT DISPLAY -->
+        <div id="chat-flow" class="flex-1 overflow-y-auto p-6 flex flex-col space-y-6 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
+            <div class="self-center glass-panel px-6 py-2 rounded-full text-[10px] font-mono opacity-40 border border-white/5">
+                [ SYSTEM INITIALIZED: E2E ENCRYPTION ACTIVE ]
+            </div>
+        </div>
+
+        <!-- INPUT CONSOLE -->
+        <footer class="p-6 glass-panel border-t border-white/5">
+            <div id="recording-status" class="hidden text-center mb-3">
+                <span class="text-xs text-pink-500 font-bold animate-pulse flex items-center justify-center gap-2">
+                    <span class="w-2 h-2 bg-pink-500 rounded-full"></span> CAPTURING NEURAL VOICE STREAM...
+                </span>
+            </div>
+
+            <div class="max-w-4xl mx-auto flex items-center gap-3">
+                <!-- Attachments -->
+                <label class="cursor-pointer p-4 glass-panel rounded-2xl hover:border-blue-500/50 transition-all group">
+                    <svg class="w-6 h-6 text-blue-400 group-hover:scale-110 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    <input type="file" id="file-engine" class="hidden" onchange="transmitMedia()">
+                </label>
+
+                <!-- Voice Mic -->
+                <button id="mic-engine" class="p-4 glass-panel rounded-2xl hover:border-pink-500/50 transition-all group">
+                    <svg id="mic-icon" class="w-6 h-6 text-pink-400 group-hover:scale-110 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m14 0a7 7 0 00-14 0m14 0h-2m-12 0H5M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"></path></svg>
+                </button>
+
+                <!-- Text Input -->
+                <div class="flex-1 relative">
+                    <input type="text" id="console-input" placeholder="Type transmission..." class="w-full bg-black/40 border border-white/10 p-4 rounded-2xl outline-none focus:border-purple-500/50 focus:glow-purple transition font-medium">
+                </div>
+
+                <!-- Send Button -->
+                <button onclick="pushSignal()" class="p-4 bg-gradient-to-tr from-purple-600 to-pink-600 rounded-2xl shadow-lg hover:glow-purple transition active:scale-90">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path></svg>
+                </button>
+            </div>
+        </footer>
+    </main>
+
+    <script>
+        const socket = io();
+        let activeNode = new URLSearchParams(window.location.search).get('target') || localStorage.getItem('active_node') || '';
+
+        // 1. Sidebar Management
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('-translate-x-full');
+        }
+
+        // 2. Protocol/Contact Management
+        function addProtocol() {
+            const el = document.getElementById('target-input');
+            const val = el.value.trim();
+            if(val) {
+                renderNode(val);
+                el.value = '';
+            }
+        }
+
+        function renderNode(id) {
+            const list = document.getElementById('node-list');
+            const div = document.createElement('div');
+            div.className = `p-4 glass-panel rounded-xl cursor-pointer hover:border-purple-500/50 transition group ${activeNode === id ? 'border-purple-500 glow-purple bg-purple-500/10' : ''}`;
+            div.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <span class="font-mono text-xs text-purple-400">${id}</span>
+                    <span class="w-2 h-2 rounded-full bg-green-500 shadow-sm"></span>
+                </div>
+                <div class="text-[10px] opacity-40 mt-1 uppercase tracking-tighter">Secure Connection Active</div>
+            `;
+            div.onclick = () => switchNode(id);
+            list.prepend(div);
+        }
+
+        function switchNode(id) {
+            activeNode = id;
+            localStorage.setItem('active_node', id);
+            document.getElementById('active-target-display').innerHTML = `<span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> NODE: ${id}`;
+            document.getElementById('status-display').textContent = 'Link Established | E2E Active';
+            document.getElementById('chat-flow').innerHTML = '<div class="self-center glass-panel px-6 py-2 rounded-full text-[10px] font-mono opacity-40 border border-white/5">DATA STREAM RECOVERY SUCCESSFUL</div>';
+            toggleSidebar();
+        }
+
+        // 3. Signal Transmission (Text)
+        function pushSignal() {
+            const input = document.getElementById('console-input');
+            const msg = input.value.trim();
+            if(msg && activeNode) {
+                socket.emit('send_whatsapp', { to: activeNode, body: msg });
+                appendMsg(msg, 'sent');
+                input.value = '';
+            }
+        }
+
+        function appendMsg(text, type) {
+            const flow = document.getElementById('chat-flow');
+            const div = document.createElement('div');
+            div.className = `msg-bubble ${type}`;
+            div.innerHTML = `
+                <p class="font-medium">${text}</p>
+                <span class="text-[8px] opacity-40 mt-2 block text-right font-mono">${new Date().toLocaleTimeString()}</span>
+            `;
+            flow.appendChild(div);
+            flow.scrollTop = flow.scrollHeight;
+        }
+
+        socket.on('new_message', (data) => {
+            if(data.sender.includes(activeNode)) {
+                appendMsg(data.body, 'received');
+            }
+        });
+
+        // 4. Neural Voice Capture (Mic)
+        let mediaRecorder;
+        let audioChunks = [];
+        const micBtn = document.getElementById('mic-engine');
+
+        micBtn.onclick = async () => {
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(audioChunks, { type: 'audio/ogg; codecs=opus' });
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = () => {
+                        socket.emit('send_voice', { to: activeNode, data: reader.result.split(',')[1] });
+                        appendMsg("🎤 Neural Voice Transmission Sent", 'sent');
+                    };
+                    audioChunks = [];
+                };
+                mediaRecorder.start();
+                document.getElementById('recording-status').classList.remove('hidden');
+                micBtn.classList.add('border-pink-500', 'glow-pink', 'bg-pink-500/10');
+            } else {
+                mediaRecorder.stop();
+                document.getElementById('recording-status').classList.add('hidden');
+                micBtn.classList.remove('border-pink-500', 'glow-pink', 'bg-pink-500/10');
+            }
+        };
+
+        // 5. Media Transmission
+        function transmitMedia() {
+            const file = document.getElementById('file-engine').files[0];
+            if(file && activeNode) {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onloadend = () => {
+                    socket.emit('send_media', { to: activeNode, data: reader.result.split(',')[1], filename: file.name });
+                    appendMsg(`📁 File Transmitted: ${file.name}`, 'sent');
+                };
+            }
+        }
+
+        // Init
+        if(activeNode) switchNode(activeNode);
+    </script>
+</body>
+</html>
