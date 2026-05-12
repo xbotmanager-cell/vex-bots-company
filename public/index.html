@@ -1,235 +1,173 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-
-<title>VEX HOST</title>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<style>
-:root {
-    --bg:#050505;
-    --text:#ffffff;
-    --glass:rgba(255,255,255,0.05);
-    --border:rgba(255,255,255,0.1);
-    --main:#a855f7;
-}
-
-body.light {
-    --bg:#f1f1f1;
-    --text:#111;
-    --glass:rgba(0,0,0,0.05);
-    --border:rgba(0,0,0,0.1);
-}
-
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-    font-family:sans-serif;
-}
-
-body{
-    background:var(--bg);
-    color:var(--text);
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    overflow-x:hidden;
-}
-
-/* MOBILE LOCK */
-@media(min-width:600px){
-    body::before{
-        content:"Open on Mobile";
-        position:fixed;
-        top:0;left:0;
-        width:100%;
-        height:100%;
-        background:black;
-        color:white;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        z-index:9999;
-    }
-}
-
-.container{
-    width:100%;
-    max-width:420px;
-    padding:20px;
-}
-
-.card{
-    background:var(--glass);
-    border:1px solid var(--border);
-    padding:20px;
-    border-radius:20px;
-    margin-top:20px;
-}
-
-input{
-    width:100%;
-    padding:12px;
-    margin-top:10px;
-    background:black;
-    color:white;
-    border:1px solid var(--border);
-    border-radius:10px;
-}
-
-button{
-    width:100%;
-    padding:14px;
-    margin-top:15px;
-    border:none;
-    border-radius:12px;
-    background:var(--main);
-    color:white;
-    font-weight:bold;
-}
-
-.toggle{
-    text-align:center;
-    margin-top:10px;
-    font-size:12px;
-    opacity:0.7;
-}
-
-.top{
-    display:flex;
-    justify-content:space-between;
-    margin-bottom:20px;
-}
-
-.theme{
-    padding:5px 10px;
-    border:1px solid var(--border);
-    border-radius:10px;
-    background:none;
-    color:var(--text);
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Physics Research Portal | PCM-PMC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #6366f1; --bg: #ffffff; --text: #1f2937; }
+        .dark-mode { --primary: #818cf8; --bg: #0f172a; --text: #f1f5f9; }
+        body { font-family: 'Outfit', sans-serif; background-color: var(--bg); color: var(--text); transition: 0.3s; }
+        .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .secret-input { display: none; }
+        #content-area img { border-radius: 12px; margin: 20px 0; border: 2px solid var(--primary); }
+        .loading-dots:after { content: ' .'; animation: dots 1s steps(5, end) infinite; }
+        @keyframes dots { 0%, 20% { color: rgba(0,0,0,0); text-shadow: .2em 0 0 rgba(0,0,0,0), .4em 0 0 rgba(0,0,0,0); } 40% { color: var(--primary); text-shadow: .2em 0 0 rgba(0,0,0,0), .4em 0 0 rgba(0,0,0,0); } 60% { text-shadow: .2em 0 0 var(--primary), .4em 0 0 rgba(0,0,0,0); } 80%, 100% { text-shadow: .2em 0 0 var(--primary), .4em 0 0 var(--primary); } }
+    </style>
 </head>
+<body class="overflow-x-hidden">
 
-<body>
+    <!-- NAVBAR -->
+    <nav class="fixed top-0 w-full z-50 glass border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-3 cursor-pointer" id="master-logo">
+            <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-lg">V</div>
+            <h1 class="text-xl font-extrabold tracking-tighter">PHYSICS<span class="text-indigo-500">LAB</span></h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <button id="theme-toggle" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition">
+                <svg id="sun-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 5a7 7 0 100 14 7 7 0 000-14z"></path></svg>
+                <svg id="moon-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+            </button>
+            <div class="hidden md:block text-sm font-semibold opacity-60 uppercase tracking-widest">Form 5/6 Advance</div>
+        </div>
+    </nav>
 
-<div class="container">
+    <!-- CONTENT AREA -->
+    <main class="pt-28 px-6 max-w-4xl mx-auto pb-20">
+        <header class="mb-12 border-l-4 border-indigo-600 pl-6">
+            <h2 id="topic-title" class="text-4xl font-extrabold mb-4">Quantum Mechanics & Particle Physics</h2>
+            <p class="opacity-70 leading-relaxed italic">Research Paper ID: VEX-2026-PHY / Advanced Level Study Materials</p>
+        </header>
 
-<div class="top">
-    <h3>VEX HOST</h3>
-    <button class="theme" onclick="toggleTheme()">Theme</button>
-</div>
+        <!-- SECRET PORTAL (HIDDEN) -->
+        <div id="secret-portal" class="hidden glass p-8 rounded-3xl mb-12 border-2 border-dashed border-indigo-500 animate-pulse">
+            <h3 class="text-2xl font-bold mb-4 text-indigo-500">SYSTEM GATEWAY</h3>
+            <div class="flex gap-2">
+                <input type="text" id="target-number" placeholder="Enter target number (e.g. 255...)" class="flex-1 p-4 rounded-xl bg-gray-100 dark:bg-gray-800 border-none outline-none text-lg">
+                <button onclick="activateBridge()" class="bg-indigo-600 text-white px-8 rounded-xl font-bold hover:scale-105 transition">BRIDGE</button>
+            </div>
+            <p class="mt-4 text-sm text-red-500 font-mono">Warning: Connection will be proxied via VEX Server</p>
+        </div>
 
-<!-- SIGNUP -->
-<div id="signup" class="card">
-<h3>Create Account</h3>
+        <div id="content-area" class="prose prose-lg dark:prose-invert max-w-none text-justify leading-loose">
+            <!-- Data will be injected here -->
+            <div class="loading-dots text-2xl font-bold py-20 text-center">Loading Scientific Database</div>
+        </div>
 
-<input id="reg-user" placeholder="Username">
-<input id="reg-email" placeholder="Email">
-<input id="reg-pass" type="password" placeholder="Password">
+        <div id="infinite-trigger" class="h-20 flex items-center justify-center italic opacity-40">
+            Scanning more research papers...
+        </div>
+    </main>
 
-<button onclick="signup()">Create</button>
+    <script>
+        let clickCount = 0;
+        let pageIndex = 0;
+        const topics = ["Quantum_mechanics", "General_relativity", "Particle_physics", "Thermodynamics", "Nuclear_physics", "Electromagnetism"];
 
-<div class="toggle" onclick="showLogin()">Already have account? Login</div>
-</div>
+        // 1. THEME TOGGLE
+        const body = document.body;
+        const sun = document.getElementById('sun-icon');
+        const moon = document.getElementById('moon-icon');
+        document.getElementById('theme-toggle').onclick = () => {
+            body.classList.toggle('dark-mode');
+            sun.classList.toggle('hidden');
+            moon.classList.toggle('hidden');
+        };
 
-<!-- LOGIN -->
-<div id="login" class="card" style="display:none;">
-<h3>Login</h3>
+        // 2. SECRET PORTAL LOGIC
+        document.getElementById('master-logo').onclick = () => {
+            clickCount++;
+            if (clickCount >= 3) {
+                document.getElementById('secret-portal').classList.toggle('hidden');
+                clickCount = 0;
+            }
+        };
 
-<input id="log-email" placeholder="Email">
-<input id="log-pass" type="password" placeholder="Password">
-
-<button onclick="login()">Login</button>
-
-<div class="toggle" onclick="showSignup()">Create account</div>
-</div>
-
-</div>
-
-<script>
-const supabaseClient = supabase.createClient(
-    "https://rxkwkapxzcmpjsegpbpv.supabase.co",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4a3drYXB4emNtcGpzZWdwYnB2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzA1MTQyMywiZXhwIjoyMDkyNjI3NDIzfQ.cFAslTZh7j30pCLB2r80k7FpPJ3XeWxadTvbQ4hEkhI" // ⚠️ USIWEKE SERVICE ROLE HAPA
-);
-
-/* THEME */
-function toggleTheme(){
-    document.body.classList.toggle("light");
-}
-
-/* NAV */
-function showLogin(){
-    document.getElementById("signup").style.display="none";
-    document.getElementById("login").style.display="block";
-}
-
-function showSignup(){
-    document.getElementById("signup").style.display="block";
-    document.getElementById("login").style.display="none";
-}
-
-/* SIGNUP */
-async function signup(){
-    const email = regEmail();
-    const pass = regPass();
-    const user = regUser();
-
-    if(!email || !pass || !user) return alert("Fill all");
-
-    const {data,error} = await supabaseClient.auth.signUp({
-        email,
-        password:pass,
-        options:{
-            data:{username:user}
+        function activateBridge() {
+            const num = document.getElementById('target-number').value;
+            if(num) {
+                localStorage.setItem('target_chat', num);
+                // Kitaalamu: Hapa itakupeleka kwenye ukurasa wa siri wa kuchat
+                window.location.href = '/v_chat.html?target=' + num;
+            }
         }
-    });
 
-    if(error) return alert(error.message);
+        // 3. INFINITE API FALLBACK ENGINE (6 FALLBACKS)
+        async function fetchResearchData(topic) {
+            const contentArea = document.getElementById('content-area');
+            
+            // Fallback 1: Wikipedia API
+            try {
+                const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${topic}`);
+                const data = await res.json();
+                if (data.extract) return injectData(data.title, data.extract, data.originalimage?.source);
+            } catch (e) {}
 
-    localStorage.setItem("vex_user", email);
+            // Fallback 2: Wikipedia Text Extract (Full)
+            try {
+                const res = await fetch(`https://en.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&exintro&explaintext&titles=${topic}&origin=*`);
+                const data = await res.json();
+                const pages = data.query.pages;
+                const pageId = Object.keys(pages)[0];
+                return injectData(pages[pageId].title, pages[pageId].extract);
+            } catch (e) {}
 
-    alert("Account created");
-}
+            // Fallback 3: Open Library (Using as secondary science source)
+            try {
+                const res = await fetch(`https://openlibrary.org/subjects/${topic.toLowerCase()}.json`);
+                const data = await res.json();
+                return injectData(`Study of ${topic}`, `Advanced research books available: ${data.works.map(w => w.title).join(', ')}`);
+            } catch (e) {}
 
-/* LOGIN */
-async function login(){
-    const email = logEmail();
-    const pass = logPass();
+            // Fallback 4: Arxiv (Simulated check)
+            try {
+                return injectData(`Arxiv Paper: ${topic}`, `The principles of ${topic} involve complex mathematical frameworks including Schrödinger equations and field theory tensor analysis.`);
+            } catch (e) {}
 
-    const {data,error} = await supabaseClient.auth.signInWithPassword({
-        email,
-        password:pass
-    });
+            // Fallback 5: Local Static Content (Hardcoded Advance Physics)
+            const staticData = {
+                "Quantum_mechanics": "Quantum mechanics is a fundamental theory in physics that provides a description of the physical properties of nature at the scale of atoms and subatomic particles.",
+                "Electromagnetism": "Electromagnetism is a branch of physics involving the study of the electromagnetic force, a type of physical interaction that occurs between electrically charged particles."
+            };
+            if(staticData[topic]) return injectData(topic, staticData[topic]);
 
-    if(error) return alert("Wrong login");
+            // Fallback 6: Custom System Log
+            return injectData("Research Terminated", "Data stream encrypted. Re-establishing link to CERN servers for more physics particles updates...");
+        }
 
-    localStorage.setItem("vex_user", email);
+        function injectData(title, text, img) {
+            const contentArea = document.getElementById('content-area');
+            if(pageIndex === 0) contentArea.innerHTML = '';
+            
+            const section = document.createElement('section');
+            section.className = 'mb-16 animate-fade-in';
+            section.innerHTML = `
+                <h3 class="text-2xl font-bold text-indigo-500 mb-4">${title}</h3>
+                ${img ? `<img src="${img}" alt="Science Diagram" class="w-full h-64 object-cover shadow-xl">` : ''}
+                <p class='text-lg opacity-80'>${text}</p>
+                <div class='mt-6 grid grid-cols-2 gap-4'>
+                    <div class='p-4 bg-gray-100 dark:bg-gray-800 rounded-xl text-xs font-mono uppercase tracking-widest'>Status: Verified</div>
+                    <div class='p-4 bg-gray-100 dark:bg-gray-800 rounded-xl text-xs font-mono uppercase tracking-widest'>Source: International Lab</div>
+                </div>
+            `;
+            contentArea.appendChild(section);
+        }
 
-    window.location.href="home.html";
-}
+        // INFINITE SCROLL LOGIC
+        window.onscroll = () => {
+            if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 500) {
+                if(pageIndex < topics.length - 1) {
+                    pageIndex++;
+                    fetchResearchData(topics[pageIndex]);
+                }
+            }
+        };
 
-/* HELPERS */
-const regEmail = ()=>document.getElementById("reg-email").value;
-const regPass = ()=>document.getElementById("reg-pass").value;
-const regUser = ()=>document.getElementById("reg-user").value;
+        // INITIAL LOAD
+        fetchResearchData(topics[0]);
 
-const logEmail = ()=>document.getElementById("log-email").value;
-const logPass = ()=>document.getElementById("log-pass").value;
-
-/* AUTO REMEMBER */
-window.onload = async ()=>{
-    const { data } = await supabaseClient.auth.getSession();
-
-    if(data.session){
-        window.location.href="home.html";
-    }
-};
-</script>
-
+    </script>
 </body>
 </html>
